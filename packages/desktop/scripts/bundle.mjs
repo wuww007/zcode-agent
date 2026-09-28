@@ -117,6 +117,21 @@ const requiredRuntimeModules = [
   "asn1",
   "bcrypt-pbkdf",
   "tweetnacl",
+  // Bugfix: 3.14.3 正式包启动即报 Cannot find package 'yaml'。tsup 把 yaml 外置为运行时依赖，
+  // 但注入与校验名单都没登记它；pnpm hoisted 布局下 electron-builder 漏拷后坏包直接流出。
+  // 产物裸包引用扫描确认：tsup 默认外置 desktop 全部生产依赖，以下包同样是主进程/宿主产物
+  // 顶层 import 的运行时裸包，此前两侧名单均未覆盖。与注入名单同口径登记，校验按闭包展开。
+  "yaml",
+  "ssh2",
+  "@arms/rum-electron",
+  "electron-updater",
+  "semver",
+  "ws",
+  // 以下三项此前一直在注入名单但没有机械校验，补齐“注入的必须被校验”的闭环，
+  // 避免注入阶段被跳过时坏包仍能通过 bundle 校验流出。
+  "yazl",
+  "ms",
+  "@opentelemetry/api-logs",
 ];
 const electronBuilderRetryCount = 3;
 const electronBuilderRetryDelayMs = 5_000;

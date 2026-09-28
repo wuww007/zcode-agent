@@ -152,6 +152,22 @@ const REQUIRED_ASAR_RUNTIME_MODULES = [
   // 已在线上触发安装包启动即报 Cannot find module 'ms'（Require stack: debug/src/common.js），
   // 自动更新链路直接崩。ms 是叶子包，显式注入即可让 debug 在 app.asar 内稳定解析。
   "ms",
+  // Bugfix: 3.14.3 正式包启动即报 Cannot find package 'yaml'（主进程 chunk-ZBOCQJGV.js 顶层
+  // import "yaml"）。tsup 把 yaml 外置为运行时依赖后，app.asar 必须能解析到它；但 pnpm hoisted
+  // 布局下 electron-builder 漏拷了这颗直接生产依赖，而注入与校验名单都没登记 yaml，坏包直接流出。
+  // 对产物做裸包引用扫描后确认：tsup 默认把 desktop 全部生产依赖外置，以下包同样是主进程/宿主
+  // 产物顶层 import 的运行时裸包，与 yaml 属同一风险面。全部按闭包根注入；已进 asar 时
+  // afterPack 的缺失扫描会跳过，不改变现有产物体积。
+  "yaml",
+  "ssh2",
+  "@arms/rum-electron",
+  "electron-updater",
+  "semver",
+  "ws",
+  // @babel/runtime 是 @arms/rum-core 的 peerDependency，闭包递归只走 dependencies/optionalDependencies，
+  // 不会自动带上 peer；bundle.mjs 校验名单一直要求它存在，按“校验要求的模块必须有人负责补齐”的约定，
+  // 这里给它补一个注入所有者，避免 electron-builder 漏拷时构建直接失败而不是自动修复。
+  "@babel/runtime",
 ];
 // pacman 依赖必须使用 Arch 官方仓库中的包名。electron-builder 的历史默认集合包含
 // 已移除的 libappindicator-gtk3/http-parser，且缺少 Electron 实际需要的运行库；显式
