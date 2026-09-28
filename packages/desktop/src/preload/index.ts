@@ -684,6 +684,9 @@ contextBridge.exposeInMainWorld("zcode", {
   }> => ipcRenderer.invoke(PlatformChannels.ExportLogs),
   /** 截取当前窗口，用于错误反馈携带现场画面 */
   captureWindowScreenshot: () => ipcRenderer.invoke(PlatformChannels.CaptureWindowScreenshot),
+  /** 微信式选区截图：整屏冻结遮罩 + 拖拽选区，确认后返回裁剪 PNG；取消返回 null */
+  captureScreenRegion: () =>
+    ipcRenderer.invoke(PlatformChannels.CaptureScreenRegion),
   // CDP-on-guest pivot：`<webview>` guest dom-ready 后上报 webContentsId 给 main attach。
   browserViewAttachGuest: (payload: {
     key: string;

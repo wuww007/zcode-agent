@@ -122,6 +122,7 @@ export function createDesktopPlatform(options: {
     exportLogs: () => window.zcode.exportLogs(),
     captureWindowScreenshot: () =>
       window.zcode.captureWindowScreenshot?.() ?? Promise.resolve(null),
+    captureScreenRegion: () => window.zcode.captureScreenRegion?.() ?? Promise.resolve(null),
     onUpdateReady: (callback) => window.zcode.onUpdateReady(callback),
     onUpdateCheckResult: (callback) => window.zcode.onUpdateCheckResult(callback),
     onUpdateStateChanged: (callback) => window.zcode.onUpdateStateChanged?.(callback) ?? (() => {}),

@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import {
   VIDEO_INPUT_MAX_BYTES,
   type CreateTempTextAttachmentResult,
+  type ScreenRegionCaptureResult,
   type ZCodePromptAttachment,
 } from "@zcode/shared";
 import { PROTOCOL_V4_LIMITS } from "@zcode/shared/zcode-protocol-v4";
@@ -105,6 +106,21 @@ export function createChatComposerPathAttachment(localPath: string): ChatCompose
     mimeType: inferAttachmentMimeType(filename),
     sizeBytes: 0,
   };
+}
+
+/**
+ * 选区截图结果 → 附件 File。base64 解码在 renderer 完成，之后走与粘贴/上传
+ * 完全相同的 addAttachmentFiles 链路，不新增第二份附件状态路径。
+ */
+export function createScreenshotAttachmentFile(result: ScreenRegionCaptureResult): File {
+  const binary = atob(result.dataBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  // main 只产出 image/png；防御未来 contentType 变化时 File.type 为空。
+  const contentType = result.contentType.startsWith("image/") ? result.contentType : "image/png";
+  return new File([bytes], result.filename, { type: contentType });
 }
 
 export function createClipboardTextPathComposerAttachment(

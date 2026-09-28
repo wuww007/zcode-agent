@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- 桌面平台 IPC 集中装配，拆散会让权限边界更难审计；行数随平台能力增长。 */
+import { join } from "node:path";
 import { BrowserWindow, dialog, ipcMain, nativeTheme } from "electron";
 import { readZCodeStdioTapDevState } from "@zcode/services/node";
 import {
@@ -38,6 +39,7 @@ import { resolveDesktopZoomLevelFromFactor } from "./desktopZoom.js";
 import { resolveDesktopWindowChromeState } from "./desktopWindowChromeState.js";
 import { handleWindowUnreadCountSync } from "./desktopWindowLifecycle.js";
 import { captureWindowScreenshot, openPathInFileManager } from "./desktopMainIpcHelpers.js";
+import { createScreenCaptureRegionCoordinator } from "./screenCaptureRegion.js";
 import { registerCuaPermissionIpcHandlers } from "./desktopCuaPermissionIpc.js";
 import {
   registerDesktopBrowserIpcHandlers,
@@ -389,6 +391,36 @@ export function registerPlatformIpcHandlers(options: {
   ipcMain.handle(PlatformChannels.CaptureWindowScreenshot, async (event) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
     return captureWindowScreenshot(senderWindow);
+  });
+  // 微信式选区截图：会话由 coordinator 独立持有；overlay 三个回传通道都做 sender
+  // 校验，只接受 coordinator 自己创建的遮罩 webContents，防止其他 renderer 伪造选区。
+  // spec：specs/composer-screen-capture.md
+  const screenCaptureCoordinator = createScreenCaptureRegionCoordinator({
+    logger: options.logger,
+    getLocale: options.currentApplicationLocale,
+    resolvePreloadPath: () => join(import.meta.dirname, "../preload/screenCaptureOverlay.cjs"),
+  });
+  const isScreenCaptureOverlaySender = (senderId: number) =>
+    Boolean(screenCaptureCoordinator.ownsOverlayWebContents(senderId));
+  ipcMain.handle(PlatformChannels.CaptureScreenRegion, (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    return screenCaptureCoordinator.capture(senderWindow);
+  });
+  ipcMain.on(PlatformChannels.ScreenCaptureOverlayReady, (event) => {
+    if (!isScreenCaptureOverlaySender(event.sender.id)) return;
+    screenCaptureCoordinator.handleOverlayReady(event.sender.id);
+  });
+  ipcMain.handle(PlatformChannels.ScreenCaptureOverlayFinish, (event, payload: unknown) => {
+    if (!isScreenCaptureOverlaySender(event.sender.id)) return;
+    screenCaptureCoordinator.handleOverlayFinish(event.sender.id, payload);
+  });
+  ipcMain.handle(PlatformChannels.ScreenCaptureOverlayCancel, (event) => {
+    if (!isScreenCaptureOverlaySender(event.sender.id)) return;
+    screenCaptureCoordinator.handleOverlayCancel(event.sender.id);
+  });
+  ipcMain.on(PlatformChannels.ScreenCaptureOverlayHover, (event) => {
+    if (!isScreenCaptureOverlaySender(event.sender.id)) return;
+    screenCaptureCoordinator.handleOverlayHover(event.sender.id);
   });
   ipcMain.handle(
     PlatformChannels.OpenInEditor,

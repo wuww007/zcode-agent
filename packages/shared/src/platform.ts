@@ -343,6 +343,50 @@ export interface WindowScreenshotResult {
   size: number;
 }
 
+/** 选区截图：遮罩窗口内的选区矩形（DIP 坐标，遮罩窗口左上角为原点）。 */
+export interface ScreenCaptureSelectionRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * 选区遮罩 overlay → main 的确认请求。
+ * `imageDataBase64` 是 overlay 在本地把「选区画面 + 标注」合成的最终 PNG（裸 base64）；
+ * 无标注时缺省，main 按选区自行裁剪。main 会校验合成图尺寸后再采用。
+ */
+export interface ScreenCaptureOverlayFinishRequest {
+  region: ScreenCaptureSelectionRegion;
+  imageDataBase64?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+}
+
+/** 选区截图成功：按选区裁剪出的 PNG。 */
+export interface ScreenRegionCaptureResult {
+  ok: true;
+  dataBase64: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  /** 裁剪后位图的物理像素尺寸（已含 scaleFactor）。 */
+  width: number;
+  height: number;
+}
+
+export type ScreenRegionCaptureFailureReason =
+  | "screen-recording-permission"
+  | "capture-failed"
+  | "busy";
+
+export interface ScreenRegionCaptureFailure {
+  ok: false;
+  reason: ScreenRegionCaptureFailureReason;
+}
+
+export type ScreenRegionCaptureOutcome = ScreenRegionCaptureResult | ScreenRegionCaptureFailure;
+
 export type ChromeBrowserDataImportError =
   | "chrome_profile_not_found"
   | "chrome_profile_ambiguous"
@@ -843,6 +887,13 @@ export interface IPlatformService {
 
   /** 截取当前窗口，用于错误反馈携带现场画面；Web fallback 可返回 null */
   captureWindowScreenshot?(): Promise<WindowScreenshotResult | null>;
+
+  /**
+   * 微信式选区截图：整屏冻结遮罩 + 拖拽选区，确认后返回裁剪 PNG；用户取消返回 null。
+   * 仅桌面平台实现；Web 不提供该方法，UI 据此隐藏截图入口。
+   * spec：specs/composer-screen-capture.md
+   */
+  captureScreenRegion?(): Promise<ScreenRegionCaptureOutcome | null>;
 
   /** `<webview>` guest 上报；active=true 表示 agent 无 tabId 命令优先读取当前可见页。 */
   browserViewAttachGuest?(payload: {

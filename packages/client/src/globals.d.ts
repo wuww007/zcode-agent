@@ -41,6 +41,7 @@ import type {
   TelemetryRendererContext,
   TaskNotificationPayload,
   WindowScreenshotResult,
+  ScreenRegionCaptureOutcome,
   EmbeddedBrowserDataClearResult,
   WSLDistro,
   UpdateCheckResultPayload,
@@ -233,6 +234,8 @@ declare global {
       }>;
       /** 截取当前窗口，用于错误反馈携带现场画面 */
       captureWindowScreenshot?(): Promise<WindowScreenshotResult | null>;
+      /** 微信式选区截图：确认后返回裁剪 PNG，取消返回 null；仅桌面端暴露 */
+      captureScreenRegion?(): Promise<ScreenRegionCaptureOutcome | null>;
       browserViewAttachGuest?(payload: {
         key: string;
         webContentsId: number;

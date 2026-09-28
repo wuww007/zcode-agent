@@ -152,6 +152,7 @@ import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import { useConversationSelectionReferences } from "@/v4/composer/useConversationSelectionReferences.js";
 import { ConversationBackgroundWorkTrigger } from "@/v4/composer/ConversationBackgroundWorkTrigger.js";
 import { V4ComposerCuaEntry } from "@/v4/composer/V4ComposerCuaEntry.js";
+import { V4ComposerScreenshotButton } from "@/v4/composer/V4ComposerScreenshotButton.js";
 import {
   V4ComposerModeSwitch,
   V4ComposerModelControls,
@@ -2139,6 +2140,11 @@ function ConversationComposerImpl({
   const leadingActionsNode = useMemo(
     () => (
       <>
+        {/* 截图入口（微信桌面端同款）；平台门在组件内部，Web/缺 provider 不渲染。 */}
+        <V4ComposerScreenshotButton
+          disabled={disabled}
+          onCapture={attachmentsApi.captureScreenAttachment}
+        />
         <V4ComposerModeSwitch
           workspacePath={workspacePath}
           workspaceIdentity={workspaceIdentity}
@@ -2167,6 +2173,7 @@ function ConversationComposerImpl({
     ),
     [
       activeConfigPicker,
+      attachmentsApi.captureScreenAttachment,
       canStop,
       disabled,
       draftConfig,

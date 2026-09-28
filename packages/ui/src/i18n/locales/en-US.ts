@@ -154,6 +154,10 @@ const enUS: Record<string, string> = {
   "chat.composer.addSection": "Add",
   "chat.composer.addWorkflow": "Workflow",
   "chat.composer.attachment": "Attachments",
+  "chat.composer.screenshot": "Screenshot",
+  "chat.composer.screenshot.permissionError":
+    "Screenshots require screen recording permission. Allow it in System Settings and try again",
+  "chat.composer.screenshot.failed": "Screenshot failed. Please try again",
   "chat.permission.feedback.ariaLabel": "Optional feedback for the model when denying",
   "chat.permission.feedback.placeholder": "Tell the model what to do instead...",
   "offPeak.chatCreated.defaultTitle": "Idle-time task",

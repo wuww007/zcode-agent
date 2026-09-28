@@ -13,6 +13,7 @@ import {
   createChatComposerPathAttachment,
   createClipboardTextAttachmentFilenameForDate,
   createClipboardTextPathComposerAttachment,
+  createScreenshotAttachmentFile,
   formatAttachmentSize,
   revokeChatComposerAttachment,
   serializeChatComposerAttachment,
@@ -82,6 +83,10 @@ interface ComposerAttachmentsApi {
   isDraggingOverComposer: boolean;
   attachmentInputRef: React.RefObject<HTMLInputElement | null>;
   openAttachmentPicker: () => void;
+  /** 微信式选区截图：成功后图片走 addAttachmentFiles 既有链路；取消静默返回。 */
+  captureScreenAttachment: () => Promise<void>;
+  /** 选区截图会话进行中（遮罩窗口打开），按钮据此禁用防重入。 */
+  screenCapturePending: boolean;
   handleAttachmentInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   handlePaste: (event: ChatComposerPasteEvent) => void;
   handleDragOverComposer: (event: React.DragEvent<HTMLElement>) => void;
@@ -224,6 +229,7 @@ export function useComposerAttachments(
   const [restartEpoch, setRestartEpoch] = useState(0);
   const [composerDragKind, setComposerDragKind] = useState<"attachment" | "workspace" | null>(null);
   const isDraggingOverComposer = composerDragKind !== null;
+  const [screenCapturePending, setScreenCapturePending] = useState(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const dragFeedbackTimerRef = useRef<number | null>(null);
 
@@ -734,6 +740,47 @@ export function useComposerAttachments(
     [addAttachmentFiles],
   );
 
+  // 微信式选区截图：捕获/裁剪都在 main 完成，这里只负责把结果转成图片附件，
+  // 以及把结构化失败映射成本地化文案。取消（null）静默返回，不算错误。
+  const captureScreenAttachment = useCallback(async () => {
+    if (disabled || screenCapturePending) return;
+    if (!platform.captureScreenRegion) return;
+    if (readComposerAttachmentScope(scopeKey).length >= MAX_CHAT_ATTACHMENTS) {
+      showAttachmentLimitWarning();
+      return;
+    }
+    setScreenCapturePending(true);
+    try {
+      const outcome = await platform.captureScreenRegion();
+      if (!outcome) return;
+      if (!outcome.ok) {
+        setAttachmentError(
+          intl.formatMessage({
+            id:
+              outcome.reason === "screen-recording-permission"
+                ? "chat.composer.screenshot.permissionError"
+                : "chat.composer.screenshot.failed",
+          }),
+        );
+        return;
+      }
+      addAttachmentFiles([createScreenshotAttachmentFile(outcome)]);
+    } catch (error) {
+      logger.warn("[v4-composer-attachments] 选区截图失败", error);
+      setAttachmentError(intl.formatMessage({ id: "chat.composer.screenshot.failed" }));
+    } finally {
+      setScreenCapturePending(false);
+    }
+  }, [
+    addAttachmentFiles,
+    disabled,
+    intl,
+    platform,
+    scopeKey,
+    screenCapturePending,
+    showAttachmentLimitWarning,
+  ]);
+
   const handlePaste = useCallback(
     (event: ChatComposerPasteEvent) => {
       if (disabled || !event.clipboardData) return;
@@ -1071,6 +1118,8 @@ export function useComposerAttachments(
       isDraggingOverComposer,
       attachmentInputRef,
       openAttachmentPicker,
+      captureScreenAttachment,
+      screenCapturePending,
       handleAttachmentInputChange,
       handlePaste,
       handleDragOverComposer,
@@ -1100,6 +1149,8 @@ export function useComposerAttachments(
       handleWhiteboardMentionSelected,
       isDraggingOverComposer,
       openAttachmentPicker,
+      captureScreenAttachment,
+      screenCapturePending,
       prepareForSend,
       removeAttachment,
       retryAttachment,

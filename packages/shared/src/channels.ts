@@ -22,6 +22,7 @@ import type {
   RendererActionTraceConfigV1,
 } from "./rendererActionTrace.js";
 import type { RendererHeapSample } from "./validation.js";
+import type { ScreenCaptureOverlayFinishRequest, ScreenRegionCaptureOutcome } from "./platform.js";
 import type {
   CancelPendingRemoteConnectionRequest,
   BindRemoteWorkspaceSessionContextRequest,
@@ -346,6 +347,23 @@ export const PlatformChannels = {
   /** Renderer → Main：截取当前窗口作为反馈附件 */
   CaptureWindowScreenshot: "zcode:capture-window-screenshot",
   /**
+   * Renderer → Main：微信式选区截图。main 捕获光标所在显示器整屏、弹出选区遮罩窗口，
+   * 用户确认后按选区裁剪，随同一个 invoke 返回 PNG base64；用户取消返回 null。
+   * spec：specs/composer-screen-capture.md
+   */
+  CaptureScreenRegion: "zcode:capture-screen-region",
+  /** 选区遮罩 overlay → Main：冻结画面已绘制完成，可以显示遮罩窗口。 */
+  ScreenCaptureOverlayReady: "zcode:screen-capture-overlay-ready",
+  /** 选区遮罩 overlay → Main：用户确认选区，携带遮罩窗口内的 DIP 矩形。 */
+  ScreenCaptureOverlayFinish: "zcode:screen-capture-overlay-finish",
+  /** 选区遮罩 overlay → Main：用户取消截图（Esc / ✕ / 右键）。 */
+  ScreenCaptureOverlayCancel: "zcode:screen-capture-overlay-cancel",
+  /**
+   * 选区遮罩 overlay → Main：鼠标进入且窗口无焦点。macOS 只为 key window 应用
+   * CSS 光标，非焦点遮罩显示默认箭头；main 收到后为该遮罩抢焦点（仅 macOS）。
+   */
+  ScreenCaptureOverlayHover: "zcode:screen-capture-overlay-hover",
+  /**
    * Renderer → Main：`<webview>` guest dom-ready 后上报 webContentsId，
    * main 用 BrowserGuestManager attach 该 guest（fire-and-forget）。CDP-on-guest pivot。
    */
@@ -495,6 +513,8 @@ export const InternalChannels = {
   ScopedServicePortReady: "zcode:scoped-service-port-ready",
   /** preload → renderer：主进程已确认系统通知展示，renderer 可播放提示音 */
   TaskNotificationSound: "zcode:task-notification-sound",
+  /** main → 选区遮罩 overlay：整屏冻结画面（PNG base64）与显示尺寸 */
+  ScreenCaptureOverlayImageData: "zcode:screen-capture-overlay-image-data",
 } as const;
 
 /** @deprecated `/ws` 已忽略该头；保留常量仅供旧客户端兼容。 */
@@ -1005,6 +1025,26 @@ export interface PlatformChannelMap {
       contentType: string;
       size: number;
     } | null;
+  };
+  [PlatformChannels.CaptureScreenRegion]: {
+    request: void;
+    response: ScreenRegionCaptureOutcome | null;
+  };
+  [PlatformChannels.ScreenCaptureOverlayReady]: {
+    request: void;
+    response: void;
+  };
+  [PlatformChannels.ScreenCaptureOverlayFinish]: {
+    request: ScreenCaptureOverlayFinishRequest;
+    response: void;
+  };
+  [PlatformChannels.ScreenCaptureOverlayCancel]: {
+    request: void;
+    response: void;
+  };
+  [PlatformChannels.ScreenCaptureOverlayHover]: {
+    request: void;
+    response: void;
   };
   // CDP-on-guest pivot：renderer `<webview>` 上报 guest webContentsId → main attach。
   [PlatformChannels.BrowserViewAttachGuest]: {
