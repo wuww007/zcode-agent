@@ -1415,6 +1415,10 @@ export class ConversationV4Gateway {
       connectionId: params.connectionId,
       base: params.base,
       deliveryProfile: profileName,
+      // 会话切回的锚点恢复：订阅方请求以该行为中心开初始窗口；缺省 = 尾部窗口。
+      ...(params.initialWindowAnchorRowId !== undefined
+        ? { initialWindowAnchorRowId: params.initialWindowAnchorRowId }
+        : {}),
       // 与 clientMode 同族的可信注入：能力位来自该连接的 clientHello，缺席一律按旧消费者办
       // （整键 patch + 旧界裁剪）。resync / rehydrate 沿用订阅上已记下的这一位，不再重取。
       workflowRunDeltas: params.workflowRunDeltas === true,
@@ -1578,6 +1582,7 @@ export class ConversationV4Gateway {
     return publisher.getRowsRange(
       {
         ...(params.beforeRowId !== undefined ? { beforeRowId: params.beforeRowId } : {}),
+        ...(params.afterRowId !== undefined ? { afterRowId: params.afterRowId } : {}),
         limit: params.limit,
       },
       // clientMode 决定行可见性过滤档位：桌面 continuous（默认）/ 断线恢复 replayable。

@@ -15,6 +15,7 @@ import { SessionEventType, type SessionEvent } from "@zcode/contracts";
 import type {
   CommandEnvelope,
   ConversationDelta,
+  ConversationRow,
   ConversationRowTarget,
   ConversationSnapshot,
   ConversationTopicFrame,
@@ -75,6 +76,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * 锚点窗口：以 anchorRowId 为中心截取有界行窗（会话切回的滚动恢复首帧）。
+ * 锚点行缺失（rewind/裁剪后 rowId 空洞）→ 取第一个 rowId >= anchor 的行；无可定位行
+ * → 返回 null，由调用方回落尾部窗口。窗口必含锚点行，两端各取一半预算，
+ * 总量 ≤ snapshotAnchorWindowRows，与尾部窗口保持同一 wire 数量级。
+ */
+function buildAnchorWindowRows(
+  visibleRows: readonly ConversationRow[],
+  anchorRowId: number,
+): ConversationRow[] | null {
+  if (visibleRows.length === 0) return null;
+  let anchorIndex = visibleRows.findIndex((row) => row.rowId === anchorRowId);
+  if (anchorIndex === -1) {
+    anchorIndex = visibleRows.findIndex((row) => row.rowId >= anchorRowId);
+    if (anchorIndex === -1) return null;
+  }
+  const limit = PROTOCOL_V4_LIMITS.snapshotAnchorWindowRows;
+  const half = Math.floor(limit / 2);
+  const start = Math.max(0, anchorIndex - half);
+  const end = Math.min(visibleRows.length, start + limit);
+  return visibleRows.slice(start, end);
+}
+
 function hasPlanMarkdown(row: ToolCallRow): boolean {
   if (isRecord(row.input)) {
     const plan = row.input.plan;
@@ -93,6 +117,11 @@ interface Subscription {
   subscriptionId: string;
   connectionId: string;
   profile: DeliveryProfile;
+  /**
+   * 会话切回的锚点恢复：初始快照以该行为中心开窗（取代尾部窗口）。
+   * 只影响 initial snapshot 的行选择，不改 seq 水位与续流语义。
+   */
+  initialWindowAnchorRowId?: number;
   /**
    * 这条订阅认不认得 `workflowRun.*` 键级增量（握手能力位，由可信 host 注入）。
    * false = 旧消费者：增量折成整键 patch、快照裁到旧界（conversation-workflow-run-deltas.ts）。
@@ -115,6 +144,8 @@ interface ConversationSubscribeParams {
   base?: { logEpoch: string; seq: number };
   /** 缺省 replayable（ws 默认；MessagePort 宿主显式传 continuous）。 */
   deliveryProfile?: DeliveryProfileName;
+  /** 订阅方请求的锚点开窗行；只对本次订阅的 initial snapshot 生效。 */
+  initialWindowAnchorRowId?: number;
   /**
    * 该连接的 clientHello 声明过认得 `workflowRun.*` 增量。与 deliveryProfile 同族：可信 host
    * 注入，面向 UI 的 subscribe 选不了。缺省 false——能力位缺席一律按旧消费者办。
@@ -314,19 +345,29 @@ export class ConversationTopicPublisher {
   private getWireSnapshotForProfile(
     profile: DeliveryProfile,
     snapshot = this.projection.getSnapshot(),
+    initialWindowAnchorRowId?: number,
   ): ConversationSnapshot {
     const visibleRows = filterConversationRowsForProfile(snapshot.rows.window, profile);
+    // lastRowId 保持全序口径（含截断前的末行），客户端以 window 末行 < lastRowId
+    // 判定尾部还有未加载行（锚点窗口的向下补页边界）。
+    const lastRowId = visibleRows[visibleRows.length - 1]?.rowId ?? null;
+    const anchorWindow =
+      initialWindowAnchorRowId === undefined
+        ? null
+        : buildAnchorWindowRows(visibleRows, initialWindowAnchorRowId);
+    const window = anchorWindow ?? visibleRows;
     const visibleSnapshot: ConversationSnapshot = {
       ...snapshot,
       rows: {
         ...snapshot.rows,
-        window: visibleRows,
+        window,
         totalCount: visibleRows.length,
         firstRowId: visibleRows[0]?.rowId ?? null,
+        lastRowId,
       },
     };
     const limit = PROTOCOL_V4_LIMITS.snapshotTailWindowRows;
-    if (visibleRows.length <= limit) return visibleSnapshot;
+    if (anchorWindow !== null || visibleRows.length <= limit) return visibleSnapshot;
     return {
       ...visibleSnapshot,
       rows: { ...visibleSnapshot.rows, window: visibleRows.slice(-limit) },
@@ -340,7 +381,11 @@ export class ConversationTopicPublisher {
    * 它的 `.max(256)` 会让**整帧**解析失败（已知键上的解析错误不会只剥掉一个键）。
    */
   private getWireSnapshotForSubscription(subscription: Subscription): ConversationSnapshot {
-    const snapshot = this.getWireSnapshotForProfile(subscription.profile);
+    const snapshot = this.getWireSnapshotForProfile(
+      subscription.profile,
+      this.projection.getSnapshot(),
+      subscription.initialWindowAnchorRowId,
+    );
     if (subscription.workflowRunDeltas || snapshot.workflowRuns === undefined) return snapshot;
     const workflowRuns = clampWorkflowRunsForLegacy(snapshot.workflowRuns);
     return workflowRuns === snapshot.workflowRuns ? snapshot : { ...snapshot, workflowRuns };
@@ -434,13 +479,14 @@ export class ConversationTopicPublisher {
   }
 
   /**
-   * rows/range（游标制）：取 rowId < beforeRowId 的最后 limit 行
+   * rows/range（游标制）：取 rowId < beforeRowId 的最后 limit 行，或 rowId > afterRowId
+   * 的前 limit 行（锚点窗口向尾部补页；与 beforeRowId 二选一，同时出现 afterRowId 优先）
    * （rowId 升序返回）。数据源 = 投影全量行（事件重放/transcript hydration 已灌入），
    * 与订阅流出自同一归约，天然满足「与全量重放前缀逐字节一致」。
    * 只读、无状态、超时重发安全；atLogEpoch 供客户端陈旧读整体丢弃。
    */
   getRowsRange(
-    params: { beforeRowId?: number; limit: number },
+    params: { beforeRowId?: number; afterRowId?: number; limit: number },
     deliveryProfile: DeliveryProfileName = "replayable",
   ): V4ConversationRowsRangeResult {
     const snapshot = this.projection.getSnapshot();
@@ -449,11 +495,16 @@ export class ConversationTopicPublisher {
       snapshot.rows.window,
       DELIVERY_PROFILES[deliveryProfile],
     );
-    const eligible =
-      params.beforeRowId === undefined
-        ? visibleRows
-        : visibleRows.filter((row) => row.rowId < (params.beforeRowId as number));
-    const rows = eligible.slice(-limit);
+    let eligible: readonly ConversationRow[];
+    if (params.afterRowId !== undefined) {
+      eligible = visibleRows.filter((row) => row.rowId > params.afterRowId!);
+    } else if (params.beforeRowId !== undefined) {
+      eligible = visibleRows.filter((row) => row.rowId < params.beforeRowId!);
+    } else {
+      eligible = visibleRows;
+    }
+    const rows =
+      params.afterRowId !== undefined ? eligible.slice(0, limit) : eligible.slice(-limit);
     return {
       rows,
       atSeq: snapshot.seq,
@@ -769,6 +820,9 @@ export class ConversationTopicPublisher {
       subscriptionId: `sub-${this.logEpoch}-${this.nextSubscriptionSerial++}`,
       connectionId: params.connectionId,
       profile,
+      ...(params.initialWindowAnchorRowId !== undefined
+        ? { initialWindowAnchorRowId: params.initialWindowAnchorRowId }
+        : {}),
       workflowRunDeltas: params.workflowRunDeltas === true,
       buffer: [],
       bufferBytes: 0,

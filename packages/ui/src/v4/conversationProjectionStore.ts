@@ -116,6 +116,13 @@ export interface ConversationStoreState {
   optimisticCommands: readonly OptimisticCommand[];
   /** loadOlder 在途标记（自动预取防重入）。 */
   loadingOlder: boolean;
+  /** loadNewer 在途标记（锚点窗口向尾部补页防重入）。 */
+  loadingNewer: boolean;
+  /**
+   * 锚点开窗会话的「向尾部补齐游标」：锚点快照消费时 = 窗口末行 rowId；
+   * 尾部快照 / recovery 替换后为 null（尾窗语义，无向下边界）。
+   */
+  newerCursorRowId: number | null;
   /** CLI 完整有效 projection 返回的终态计划目录。 */
   sessionPlans: readonly ToolCallRow[];
   /** 只用于触发计划目录只读 query，不属于 conversation 协议事实。 */
@@ -146,6 +153,8 @@ const INITIAL_STATE: ConversationStoreState = {
   rendererTiming: undefined,
   optimisticCommands: [],
   loadingOlder: false,
+  loadingNewer: false,
+  newerCursorRowId: null,
   sessionPlans: [],
   planDirectoryRevision: 0,
   plansLoading: false,
@@ -232,6 +241,20 @@ export function hasOlderRows(snapshot: ConversationSnapshot | null): boolean {
 }
 
 /**
+ * 尾部还有未加载行 ⇔ 锚点开窗且补页游标小于全序末行（lastRowId 判定）。
+ * 尾部窗口（newerCursorRowId = null）天然贴尾，恒 false；lastRowId 未知（旧发送端）按 false。
+ * 注意窗口末行可能已被 append 推进到尾部（间隙 [cursor, 末行] 未加载），不能用
+ * max(cursor, 窗口末行) 判定——那会把未加载的间隙误判成已闭合。
+ */
+export function hasNewerRows(
+  snapshot: ConversationSnapshot | null,
+  newerCursorRowId: number | null,
+): boolean {
+  if (!snapshot || newerCursorRowId === null || snapshot.rows.lastRowId === null) return false;
+  return newerCursorRowId < snapshot.rows.lastRowId;
+}
+
+/**
  * 冷快照尾窗是否从一个 turn 的中间截断。turnHeader 是完整 turn 的权威起点；首行允许是
  * lightBoundary，因此不能只判断首行 kind，必须检查首个 turn 在当前窗口里是否已有 header。
  */
@@ -263,6 +286,28 @@ function mergeOlderRows(
 }
 
 /**
+ * rows/range(afterRowId) 结果并入本地窗口（锚点间隙补齐）：按 rowId 键控去重后
+ * 与既有窗口（含已 append 到尾部的实时行）按 rowId 升序重排；顺序键 = rowId 全序。
+ * 返回 null 表示无可并入行（窗口无变化，调用方只推进游标）。
+ */
+function mergeNewerRows(
+  window: readonly ConversationRow[],
+  fetched: readonly ConversationRow[],
+): ConversationRow[] | null {
+  if (fetched.length === 0) return null;
+  const byRowId = new Map(window.map((row) => [row.rowId, row]));
+  let added = 0;
+  for (const row of fetched) {
+    if (!byRowId.has(row.rowId)) {
+      byRowId.set(row.rowId, row);
+      added += 1;
+    }
+  }
+  if (added === 0) return null;
+  return [...byRowId.values()].sort((a, b) => a.rowId - b.rowId);
+}
+
+/**
  * 外部 store（useSyncExternalStore 兼容：subscribe + getState 返回稳定引用）。
  * 生命周期由 SessionDataLayer 管（引用计数 + keep-warm），组件不直接 new。
  */
@@ -286,6 +331,13 @@ export class ConversationProjectionStore {
   private observedModelTransitionEventId: string | null = null;
   // 订阅代际：并发 connect 只认最新一代，过期结果立即退订防服务端悬挂。
   private generation = 0;
+  /**
+   * 会话切回的锚点恢复：首个 subscribe（snapshot === null 期间）携带该行请求锚点开窗。
+   * 首个 snapshot 应用后清空——recovery/重订回尾部窗口是明确降级，不重复锚定。
+   */
+  private restoreAnchorRowId: number | null = null;
+  /** 本代 subscribe 是否携带锚点（initial snapshot 是否按锚点开窗）。 */
+  private subscribeCarriedAnchorRowId = false;
   // 首次订阅尚未拿到 ACK 时，runtime available 只是当前启动流程的正常完成信号；
   // 记录在途数量，避免生命周期通知再次启动 connect，制造同 topic 的订阅替换竞态。
   private connectInFlight = 0;
@@ -398,12 +450,19 @@ export class ConversationProjectionStore {
       forceSnapshot?: boolean;
       initialOverflowRetry?: boolean;
       rendererPrepareStartedAt?: number;
+      /** 会话切回的锚点恢复：仅首次订阅（尚无 snapshot）时消费。 */
+      restoreAnchorRowId?: number | null;
     } = {},
   ): Promise<void> {
     if (this.closed) return;
+    if (options.restoreAnchorRowId != null && this.state.snapshot === null) {
+      this.restoreAnchorRowId = options.restoreAnchorRowId;
+    }
     const generation = ++this.generation;
     this.discardRecovery();
     const snapshot = options.forceSnapshot ? null : this.state.snapshot;
+    const subscribeAnchorRowId = snapshot === null ? this.restoreAnchorRowId : null;
+    this.subscribeCarriedAnchorRowId = subscribeAnchorRowId !== null;
     const connectStartedAt = options.rendererPrepareStartedAt ?? monotonicNow();
     const subscribeStartedAt = monotonicNow();
     logger.lifecycle.info("v4 conversation store connect started", {
@@ -424,6 +483,9 @@ export class ConversationProjectionStore {
       const result = await this.transport.subscribe({
         topic: this.topic,
         base: snapshot ? { logEpoch: snapshot.logEpoch, seq: snapshot.seq } : undefined,
+        ...(subscribeAnchorRowId !== null
+          ? { initialWindowAnchorRowId: subscribeAnchorRowId }
+          : {}),
       });
       if (generation !== this.generation || this.closed) {
         // 过期代际：这份订阅已无人消费，立即退订。
@@ -662,9 +724,22 @@ export class ConversationProjectionStore {
         frame.payload.snapshot,
         "snapshot",
       );
+      // 锚点消费：本代订阅按锚点开窗 → 补齐游标 = 窗口末行；其余 snapshot
+      // （尾部窗口 / recovery 替换）回到尾窗语义，向下边界消失。锚点只消费一次，
+      // 之后恢复退化为贴底属预期降级，不得在后续重订时重新锚定旧阅读位置。
+      const consumedAnchor = this.subscribeCarriedAnchorRowId;
+      this.subscribeCarriedAnchorRowId = false;
+      this.restoreAnchorRowId = null;
       // 规则 1：整体替换，扔掉手里的一切换新的。
       this.setState({
         snapshot: frame.payload.snapshot,
+        ...(consumedAnchor
+          ? {
+              newerCursorRowId:
+                frame.payload.snapshot.rows.window[frame.payload.snapshot.rows.window.length - 1]
+                  ?.rowId ?? null,
+            }
+          : { newerCursorRowId: null }),
         planDirectoryRevision: this.state.planDirectoryRevision + 1,
         // snapshot 整体替换后 real-user query 集合可能已变，终态缓存必须失效。
         turnNavigatorDirectoryRevision: this.state.turnNavigatorDirectoryRevision + 1,
@@ -1022,6 +1097,76 @@ export class ConversationProjectionStore {
       );
     } finally {
       if (!this.closed) this.setState({ loadingOlder: false });
+    }
+  }
+
+  /**
+   * loadNewer：锚点开窗会话以 newerCursorRowId 为游标向尾部翻页补齐间隙。
+   * - 单飞（loadingNewer 防重入）；仅在 hasNewerRows 时有动作；
+   * - 合并以 rowId 键控去重排序：与已 append 到窗口尾部的实时行共存，
+   *   在途期间到达的 delta 帧不受影响（seq 衔接时照常 apply）；
+   * - 空页且无更多（间隙被 rewind 裁掉）→ 游标直接追平 lastRowId，边界消失。
+   */
+  async loadNewer(limit: number = PROTOCOL_V4_LIMITS.rowsRangeMaxLimit): Promise<void> {
+    if (this.closed || this.state.loadingNewer) return;
+    const snapshot = this.state.snapshot;
+    const cursorRowId = this.state.newerCursorRowId;
+    if (!snapshot || cursorRowId === null || !hasNewerRows(snapshot, cursorRowId)) return;
+    const sessionId = parseConversationTopic(this.topic);
+    if (!sessionId) return;
+    this.setState({ loadingNewer: true });
+    try {
+      const result = await this.transport.rowsRange({
+        sessionId,
+        afterRowId: cursorRowId,
+        limit,
+      });
+      if (this.closed) return;
+      const current = this.state.snapshot;
+      if (!current || result.atLogEpoch !== current.logEpoch) {
+        logger.warn(
+          `[v4-store] ${this.topic} rows/range 纪元不匹配（${result.atLogEpoch}），整体丢弃`,
+        );
+        return;
+      }
+      // 在途期间游标失效（snapshot resync 整体替换回到尾窗）→ 结果作废。
+      // delta 追加只改 rows.window 引用，不产生新的 newerCursorRowId，不作废。
+      if (this.state.newerCursorRowId !== cursorRowId) return;
+      const merged = mergeNewerRows(current.rows.window, result.rows);
+      const fetchedLastRowId = result.rows[result.rows.length - 1]?.rowId;
+      // 无可并入行：间隙区间已被 rewind 裁掉（rowId 空洞）或已全部在窗口内；
+      // 游标追平 lastRowId 让向下边界收敛，避免死循环翻页。
+      let nextCursorRowId =
+        fetchedLastRowId !== undefined ? Math.max(cursorRowId, fetchedLastRowId) : cursorRowId;
+      if (merged === null && !result.hasMore && current.rows.lastRowId !== null) {
+        nextCursorRowId = current.rows.lastRowId;
+      }
+      this.setState({
+        snapshot:
+          merged === null ? current : { ...current, rows: { ...current.rows, window: merged } },
+        newerCursorRowId: nextCursorRowId,
+      });
+    } catch (error) {
+      // query 只读且可重发：失败不进 error 态，留给下次触发重试。
+      logger.warn(
+        `[v4-store] rowsRange(newer) ${this.topic} 失败: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      if (!this.closed) this.setState({ loadingNewer: false });
+    }
+  }
+
+  /**
+   * loadAllNewer：循环 loadNewer 直到追平尾部或无进展。
+   * 「回到最新」按钮在锚点间隙未闭合时使用；追平后由 Timeline 既有底部锚定贴底。
+   */
+  async loadAllNewer(): Promise<void> {
+    for (let guard = 0; guard < 64; guard += 1) {
+      if (this.closed) return;
+      const before = this.state.newerCursorRowId;
+      await this.loadNewer();
+      const after = this.state.newerCursorRowId;
+      if (after === before || after === null || !hasNewerRows(this.state.snapshot, after)) return;
     }
   }
 

@@ -61,7 +61,10 @@ import { DEFAULT_CODE_PREVIEW_SETTINGS } from "@/lib/codePreviewSettings.js";
 import type { CodeViewerSource } from "@/lib/codeViewer.js";
 import type { OpenAutomationsMain } from "@/lib/taskNavigationHistory.js";
 import { WORKSPACE_FILE_DRAG_MIME } from "@/lib/workspaceFileDrag.js";
-import { buildChatSessionScrollMemoryKey } from "@/lib/chatSessionScrollMemory.js";
+import {
+  buildChatSessionScrollMemoryKey,
+  readChatSessionScrollMemoryState,
+} from "@/lib/chatSessionScrollMemory.js";
 import type { MessageFileLinkTarget } from "@/components/ai-elements/message.js";
 import { useServices } from "@/hooks/useServices.js";
 import { useOptionalPlatform } from "@/hooks/usePlatform.js";
@@ -182,6 +185,7 @@ import {
   workflowRunDirectoryRefreshKey,
 } from "@/v4/workflowRunDirectoryModel.js";
 import {
+  hasNewerRows,
   hasOlderRows,
   shouldAutoLoadIncompleteLeadingTurn,
 } from "@/v4/conversationProjectionStore.js";
@@ -2385,7 +2389,14 @@ export function SessionPane({
       setLease(null);
       return;
     }
-    const nextLease = layer.acquire(effectiveSessionId);
+    // 会话切回的锚点恢复：把滚动记忆里离开时的锚点行交给数据层，仅 cold 订阅
+    // 消费（warm/keep_warm 复用现有窗口）。记忆缺失/贴底传 null，行为不变。
+    const restoredScrollState = readChatSessionScrollMemoryState(timelineScrollMemoryKey);
+    const restoreAnchorRowId =
+      restoredScrollState && restoredScrollState.wasPinnedToBottom === false
+        ? (restoredScrollState.anchorRowId ?? null)
+        : null;
+    const nextLease = layer.acquire(effectiveSessionId, { restoreAnchorRowId });
     // Bug 原因：acquire 会立即启动 connect，activation 可能在下一轮 effect 前释放
     // 一次性 online 帧；必须在 acquire 返回后同步监听，不能靠 snapshot 重放补偿。
     const offOnlineModelTransition = nextLease.store.onOnlineModelTransition((transition) => {
@@ -2396,7 +2407,7 @@ export function SessionPane({
       offOnlineModelTransition();
       nextLease.release();
     };
-  }, [layer, effectiveSessionId]);
+  }, [layer, effectiveSessionId, timelineScrollMemoryKey]);
 
   useEffect(() => {
     if (!sessionId || !lease || snapshot?.sessionId !== sessionId) return;
@@ -3626,6 +3637,15 @@ export function SessionPane({
     return lease?.store.loadOlder();
   }, [lease]);
 
+  // 锚点窗口向尾部补页（接近窗口下沿自动触发 / 「回到最新」先补齐）。
+  const handleLoadNewer = useCallback(() => {
+    return lease?.store.loadNewer();
+  }, [lease]);
+
+  const handleLoadAllNewer = useCallback(() => {
+    return lease?.store.loadAllNewer();
+  }, [lease]);
+
   const handleLoadAllOlder = useCallback(() => {
     return lease
       ? lease.store.loadAllOlder()
@@ -4752,6 +4772,12 @@ export function SessionPane({
               canLoadOlder={timelineSnapshot ? hasOlderRows(timelineSnapshot) : false}
               loadingOlder={timelineSnapshot ? state.loadingOlder : false}
               onLoadOlder={handleLoadOlder}
+              canLoadNewer={
+                timelineSnapshot ? hasNewerRows(timelineSnapshot, state.newerCursorRowId) : false
+              }
+              loadingNewer={timelineSnapshot ? state.loadingNewer : false}
+              onLoadNewer={handleLoadNewer}
+              onLoadAllNewer={handleLoadAllNewer}
               onLoadAllOlder={handleLoadAllOlder}
               turnNavigatorDirectoryRevision={state.turnNavigatorDirectoryRevision}
               bottomDock={conversationBottomDock}

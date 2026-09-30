@@ -3,6 +3,13 @@ export interface ChatSessionScrollMemoryState {
   scrollHeight: number;
   clientHeight: number;
   wasPinnedToBottom?: boolean;
+  /**
+   * 锚点恢复（v4 会话切回）：离底时额外记录视口顶命中的 turn 首行 rowId 与
+   * 视口顶到该单元顶部的像素偏移。恢复以「锚点行定位 + 偏移校正」一次落地，
+   * 不再依赖绝对 scrollTop（尾部窗口快照下会被钳成 0）。贴底时不存锚点。
+   */
+  anchorRowId?: number | null;
+  anchorOffsetPx?: number;
   updatedAt: number;
 }
 

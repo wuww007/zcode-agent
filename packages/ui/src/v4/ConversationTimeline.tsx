@@ -43,6 +43,10 @@ import {
   getConversationStatusPanelOffsetClassName,
 } from "@/v4/conversationLayout.js";
 import {
+  findConversationTurnUnitIndexByAnchorRowId,
+  getConversationTurnUnitAnchorRowId,
+} from "@/v4/conversationTurnAnchor.js";
+import {
   buildConversationTurnRenderUnits,
   type ConversationTurnRenderUnit,
 } from "@/v4/conversationTurnRenderUnits.js";
@@ -162,7 +166,7 @@ interface ConversationScrollMemoryScopeSnapshot {
   state: ChatSessionScrollMemoryState;
 }
 
-type PendingScrollMemoryRestoreWait = "rows" | "content";
+type PendingScrollMemoryRestoreWait = "rows" | "content" | "anchor";
 
 interface PendingScrollMemoryRestore extends ConversationScrollMemoryScopeSnapshot {
   rowWindowKey: string;
@@ -175,6 +179,9 @@ function resolvePendingScrollMemoryRestoreWait(
   hasRows: boolean,
 ): PendingScrollMemoryRestoreWait | null {
   if (!state || state.wasPinnedToBottom !== false) return null;
+  // 锚点恢复：绝对 scrollTop 对锚点窗口快照无意义（钳制即错位），必须等锚点行
+  // 加载后按「单元定位 + 偏移校正」落地。
+  if (state.anchorRowId != null) return "anchor";
   if (!hasRows || !element) return "rows";
 
   const restoredTop = resolveChatSessionScrollRestoreTop(state, element);
@@ -278,6 +285,14 @@ interface ConversationTimelineProps {
   loadingOlder?: boolean;
   /** 拉取更早一窗历史（接近顶部时自动预取）。 */
   onLoadOlder?: () => Promise<void> | void;
+  /** 锚点窗口下尾部还有未加载行（窗口末行 < 全序末行）。 */
+  canLoadNewer?: boolean;
+  /** loadNewer 在途，抑制重复触发。 */
+  loadingNewer?: boolean;
+  /** 向尾部补一页（接近窗口下沿时自动触发）。 */
+  onLoadNewer?: () => Promise<void> | void;
+  /** 连续补齐到尾部（「回到最新」在间隙未闭合时先补齐再贴底）。 */
+  onLoadAllNewer?: () => Promise<void> | void;
   /** 宽屏问题目录挂载后一次补齐当前有效分支的全部历史。 */
   onLoadAllOlder?: () => Promise<ConversationTurnNavigatorHydrationResult>;
   /**
@@ -364,6 +379,10 @@ function ConversationTimelineImpl({
   canLoadOlder = false,
   loadingOlder = false,
   onLoadOlder,
+  canLoadNewer = false,
+  loadingNewer = false,
+  onLoadNewer,
+  onLoadAllNewer,
   onLoadAllOlder,
   turnNavigatorDirectoryRevision = 0,
   bottomDock,
@@ -466,6 +485,9 @@ function ConversationTimelineImpl({
   // loadOlder 相关值经 ref 读取，保持 handleScroll 稳定引用。
   const loadOlderRef = useRef({ canLoadOlder, loadingOlder, onLoadOlder });
   loadOlderRef.current = { canLoadOlder, loadingOlder, onLoadOlder };
+  // 锚点窗口向下补页同规：值经 ref 读取，handleScroll 稳定引用。
+  const loadNewerRef = useRef({ canLoadNewer, loadingNewer, onLoadNewer, onLoadAllNewer });
+  loadNewerRef.current = { canLoadNewer, loadingNewer, onLoadNewer, onLoadAllNewer };
   const followingRef = useRef(initialFollowing());
   const programmaticScrollFrameRef = useRef<number | null>(null);
   const userScrollIntentRef = useRef<{
@@ -482,6 +504,8 @@ function ConversationTimelineImpl({
     state: ChatSessionScrollMemoryState;
   } | null>(null);
   const pendingDetachedScrollRestoreRef = useRef<PendingScrollMemoryRestore | null>(null);
+  // 锚点恢复的 rAF 校正帧句柄：sessionKey 变化/卸载时取消，避免旧会话落点追写新会话。
+  const anchorRestoreFrameRef = useRef<number | null>(null);
   // 组件「已账目」的 scrollTop——scroll 事件读取值或组件自身
   // 程序化写入（贴底/prepend 平移）后的回读值。贴底 effect 拿它对账未观察滚动
   // （滚动已发生、scroll 事件未派发），防止过期 following=true 把用户/测试的上滚拽回底部。
@@ -731,6 +755,10 @@ function ConversationTimelineImpl({
     // 渲染窗口整体偏移一个 header 高度，用户滚到的区域会是空白。
     scrollMargin: headerSlotHeight,
   });
+  // 保存/恢复回调需要最新测量但保持稳定引用（virtualizer 实例跨渲染可能换新），
+  // 统一经 ref 读取。
+  const virtualizerRef = useRef(virtualizer);
+  virtualizerRef.current = virtualizer;
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (item) => {
     return shouldAdjustVirtualizerForItemSizeChange({
       suppressAdjustment: suppressVirtualizerAdjustmentDuringRestoreRef.current,
@@ -977,11 +1005,25 @@ function ConversationTimelineImpl({
         metrics,
         lastObservedScrollTop: lastObservedScrollTopRef.current,
       });
+      // 锚点保存：离底时记录视口顶命中的虚拟单元（turn）首行与单元内偏移。
+      // 恢复以锚点定位，绝对 scrollTop 在锚点窗口快照下会被钳成 0，只作诊断保留。
+      let anchorRowId: number | null = null;
+      let anchorOffsetPx = 0;
+      if (!wasPinnedToBottom) {
+        const anchorItem = virtualizerRef.current.getVirtualItemForOffset(element.scrollTop);
+        const anchorUnit = anchorItem ? virtualizedUnitsRef.current[anchorItem.index] : undefined;
+        const unitAnchorRowId = anchorUnit ? getConversationTurnUnitAnchorRowId(anchorUnit) : null;
+        if (anchorItem && unitAnchorRowId !== null) {
+          anchorRowId = unitAnchorRowId;
+          anchorOffsetPx = Math.max(0, element.scrollTop - anchorItem.start);
+        }
+      }
       return {
         scrollTop: element.scrollTop,
         scrollHeight: element.scrollHeight,
         clientHeight: element.clientHeight,
         wasPinnedToBottom,
+        ...(anchorRowId !== null ? { anchorRowId, anchorOffsetPx } : {}),
         updatedAt: Date.now(),
       };
     },
@@ -1180,6 +1222,81 @@ function ConversationTimelineImpl({
     ],
   );
 
+  /**
+   * 锚点恢复落地：按记忆的锚点 rowId 定位虚拟单元，`scrollToIndex(start)` 后逐帧
+   * 校正单元内偏移。动态测高（markdown 重挂）会让估计高度的落点漂移，rAF 重写
+   * 绝对目标直至连续两帧收敛或次数耗尽；用户滚动立即终止并交还滚动权。
+   * 返回 true 表示锚点单元已定位（允许进入收敛循环），false 表示锚点尚不可达。
+   */
+  const applyAnchorScrollRestore = useCallback(
+    (pendingRestore: PendingScrollMemoryRestore): boolean => {
+      const element = scrollRef.current;
+      const anchorRowId = pendingRestore.state.anchorRowId;
+      if (!element || anchorRowId == null) return false;
+      const unitIndex = findConversationTurnUnitIndexByAnchorRowId(
+        virtualizedUnitsRef.current,
+        anchorRowId,
+      );
+      if (unitIndex === null) return false;
+      if (anchorRestoreFrameRef.current !== null) {
+        window.cancelAnimationFrame(anchorRestoreFrameRef.current);
+        anchorRestoreFrameRef.current = null;
+      }
+      clearUserScrollIntent();
+      markProgrammaticScroll();
+      suppressVirtualizerAdjustmentDuringRestoreRef.current = true;
+      followingRef.current = false;
+      setBackToBottomVisible(shouldShowBackToBottom(false, unitsRef.current.length));
+      const anchorOffsetPx = pendingRestore.state.anchorOffsetPx ?? 0;
+      let previousTop: number | null = null;
+      let attempts = 12;
+      const settle = () => {
+        anchorRestoreFrameRef.current = null;
+        const currentElement = scrollRef.current;
+        if (!currentElement || pendingDetachedScrollRestoreRef.current !== pendingRestore) {
+          suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
+          return;
+        }
+        if (userAdjustedScrollSinceRestoreRef.current) {
+          pendingDetachedScrollRestoreRef.current = null;
+          suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
+          return;
+        }
+        // 目标 = 锚点单元当前实测 start + 单元内偏移；测高收敛后逐帧落点不变。
+        const unitStart = virtualizerRef.current.measurementsCache[unitIndex]?.start;
+        if (unitStart === undefined) {
+          suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
+          return;
+        }
+        const targetTop = unitStart + anchorOffsetPx;
+        currentElement.scrollTop = targetTop;
+        lastObservedScrollTopRef.current = currentElement.scrollTop;
+        syncTurnNavigatorViewport(currentElement);
+        cacheCurrentScrollMemoryState(currentElement);
+        const converged =
+          previousTop !== null && Math.abs(currentElement.scrollTop - previousTop) < 1;
+        previousTop = currentElement.scrollTop;
+        if (converged || attempts <= 0) {
+          pendingDetachedScrollRestoreRef.current = null;
+          suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
+          notifyScrollObserversAfterCommit(currentElement);
+          return;
+        }
+        attempts -= 1;
+        anchorRestoreFrameRef.current = window.requestAnimationFrame(settle);
+      };
+      settle();
+      return true;
+    },
+    [
+      cacheCurrentScrollMemoryState,
+      clearUserScrollIntent,
+      markProgrammaticScroll,
+      notifyScrollObserversAfterCommit,
+      syncTurnNavigatorViewport,
+    ],
+  );
+
   const handleScroll = useCallback(() => {
     const element = scrollRef.current;
     if (!element) return;
@@ -1251,6 +1368,17 @@ function ConversationTimelineImpl({
       });
       loadOlder.onLoadOlder?.();
     }
+    // 锚点窗口向下对称补页：接近窗口下沿时向尾部翻页；跟随中（已到窗口底）
+    // 也持续触发，补齐过程中由底部锚定 effect 保持贴底直到追上实时尾部。
+    const loadNewer = loadNewerRef.current;
+    if (
+      loadNewer.canLoadNewer &&
+      !loadNewer.loadingNewer &&
+      loadNewer.onLoadNewer &&
+      element.scrollHeight - element.scrollTop - element.clientHeight < triggerPx
+    ) {
+      loadNewer.onLoadNewer();
+    }
   }, [
     commitFollowing,
     getActiveUserScrollIntent,
@@ -1262,6 +1390,14 @@ function ConversationTimelineImpl({
   const handleBackToBottom = useCallback(() => {
     pendingDetachedScrollRestoreRef.current = null;
     clearUserScrollIntent();
+    // 锚点窗口存在向下间隙时，直接 scrollToBottom 只会落在窗口底（并非实时尾部）。
+    // 先进入跟随态并连续补齐，行到达由既有底部锚定 effect 贴底。
+    if (loadNewerRef.current.canLoadNewer && loadNewerRef.current.onLoadAllNewer) {
+      commitFollowing(true);
+      void loadNewerRef.current.onLoadAllNewer();
+      saveCurrentScrollMemory();
+      return;
+    }
     commitFollowing(true);
     scrollToBottom();
     // scrollToBottom 只更新组件内 ref；若用户点击后立刻切任务，scope
@@ -1462,6 +1598,14 @@ function ConversationTimelineImpl({
             waitFor: pendingRestoreWait,
           }
         : null;
+    if (pendingRestoreWait === "anchor") {
+      // 锚点恢复：锚点窗口快照尚在订阅途中，此刻的 scrollHeight/估计高度都不代表
+      // 目标坐标系——不 clamp、不贴底，等待锚点行到达后由 pending 恢复 effect 落地。
+      followingRef.current = false;
+      setBackToBottomVisible(false);
+      suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
+      return;
+    }
     const restore = () => {
       if (!restoredState || restoredState.wasPinnedToBottom === true) {
         suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
@@ -1488,6 +1632,10 @@ function ConversationTimelineImpl({
       if (releaseGuardFrame !== null) {
         window.cancelAnimationFrame(releaseGuardFrame);
       }
+      if (anchorRestoreFrameRef.current !== null) {
+        window.cancelAnimationFrame(anchorRestoreFrameRef.current);
+        anchorRestoreFrameRef.current = null;
+      }
       suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
     };
   }, [
@@ -1502,6 +1650,19 @@ function ConversationTimelineImpl({
   useLayoutEffect(() => {
     const pendingRestore = pendingDetachedScrollRestoreRef.current;
     if (rowCount === 0 || !pendingRestore || pendingRestore.key !== scrollMemoryKey) {
+      return;
+    }
+
+    if (pendingRestore.waitFor === "anchor") {
+      // 锚点恢复：等锚点行所在单元加载后落地。窗口以锚点行为中心开窗，通常
+      // 首批快照即可命中；turn 被窗口截断时由 leading-turn 自动补拉带回更早行，
+      // 补拉耗尽仍不可达（锚点行被 rewind 裁掉等）→ 释放并回落贴底。
+      const restored = applyAnchorScrollRestore(pendingRestore);
+      if (!restored && !canLoadOlder) {
+        pendingDetachedScrollRestoreRef.current = null;
+        commitFollowing(true);
+        scrollToBottom();
+      }
       return;
     }
 
@@ -1542,11 +1703,14 @@ function ConversationTimelineImpl({
       suppressVirtualizerAdjustmentDuringRestoreRef.current = false;
     };
   }, [
+    applyAnchorScrollRestore,
     canLoadOlder,
+    commitFollowing,
     restoreScrollMemory,
     rowCount,
     rowWindowKey,
     scrollMemoryKey,
+    scrollToBottom,
     totalCount,
     totalSize,
   ]);

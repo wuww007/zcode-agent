@@ -354,6 +354,8 @@ export interface ZCodeAgentConversationSubscribeParams extends ZCodeAgentSession
   /** 水位不变量：仅当客户端真持有该时刻一致状态才允许带。 */
   base?: { logEpoch: string; seq: number };
   visibility?: "foreground" | "background";
+  /** 会话切回的锚点恢复：CLI 以该行为中心开初始快照窗口（缺省 = 尾部窗口）。 */
+  initialWindowAnchorRowId?: number;
 }
 
 export interface ZCodeAgentConversationUnsubscribeParams extends ZCodeAgentWorkspaceTarget {
@@ -368,10 +370,12 @@ export interface ZCodeAgentConversationResyncParams extends ZCodeAgentWorkspaceT
   runtimePolicy?: ZCodeAgentRuntimePolicy;
 }
 
-/** 行分页 query（rows/range）：按游标向上取一窗历史行。 */
+/** 行分页 query（rows/range）：按游标取一窗历史行（beforeRowId 向上 / afterRowId 向尾部）。 */
 export interface ZCodeAgentConversationRowsRangeParams extends ZCodeAgentSessionTarget {
   /** 取 rowId < beforeRowId 的行；缺省 = 从当前尾部向前。 */
   beforeRowId?: number;
+  /** 取 rowId > afterRowId 的前 limit 行（锚点窗口向尾部补页）；与 beforeRowId 二选一。 */
+  afterRowId?: number;
   /** 1..rowsRangeMaxLimit（200）。 */
   limit: number;
 }

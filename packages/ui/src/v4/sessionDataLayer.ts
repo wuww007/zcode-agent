@@ -68,8 +68,11 @@ export class SessionDataLayer {
    * 取得 session 的投影 store。首个引用触发 subscribe（新开 pane 就是一次
    * subscribe，与刷新、新设备同一路径）；重复 acquire 共享同一 store（readonly，
    * 同 session 多 pane = 多视图）。
+   *
+   * `restoreAnchorRowId` 仅在 cold 创建时消费（会话切回的锚点开窗恢复）；
+   * warm/keep_warm 复用现有订阅与窗口，不因重复 acquire 重新锚定。
    */
-  acquire(sessionId: string): SessionLease {
+  acquire(sessionId: string, options?: { restoreAnchorRowId?: number | null }): SessionLease {
     if (this.disposed) {
       throw new Error("SessionDataLayer 已释放，不能再 acquire");
     }
@@ -90,7 +93,10 @@ export class SessionDataLayer {
       this.entries.set(topic, entry);
       openKind = "cold";
       // 订阅失败落在 store.state（status=error + retry()），不在这里抛。
-      void store.connect({ rendererPrepareStartedAt: startedAt });
+      void store.connect({
+        rendererPrepareStartedAt: startedAt,
+        restoreAnchorRowId: options?.restoreAnchorRowId ?? null,
+      });
     }
     logger.lifecycle.info("v4 session data lease acquired", {
       event: "v4.session_data.acquire",

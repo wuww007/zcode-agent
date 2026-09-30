@@ -64,6 +64,17 @@ function appendToRow(row: ConversationRow, path: StreamablePath, append: string)
   }
 }
 
+// 锚点窗口引入后 lastRowId 是"尾部还有未加载行"的权威判定，必须在 delta 上与窗口
+// 同步维护：rowId 单调 ⇒ append 取 max；removed 的全序尾 = fromRowId - 1（整支裁剪置空）。
+function advanceRowsWindowLastRowId(
+  rows: ConversationSnapshot["rows"],
+  nextLastRowId: number,
+): ConversationSnapshot["rows"] {
+  const lastRowId =
+    rows.lastRowId === null ? nextLastRowId : Math.max(rows.lastRowId, nextLastRowId);
+  return { ...rows, lastRowId };
+}
+
 /** 应用单条 delta，返回新快照（入参不被修改）。 */
 export function applyConversationDelta(
   snapshot: ConversationSnapshot,
@@ -73,12 +84,15 @@ export function applyConversationDelta(
     case "row.appended":
       return {
         ...snapshot,
-        rows: {
-          ...snapshot.rows,
-          window: [...snapshot.rows.window, delta.row],
-          totalCount: snapshot.rows.totalCount + 1,
-          firstRowId: snapshot.rows.firstRowId ?? delta.row.rowId,
-        },
+        rows: advanceRowsWindowLastRowId(
+          {
+            ...snapshot.rows,
+            window: [...snapshot.rows.window, delta.row],
+            totalCount: snapshot.rows.totalCount + 1,
+            firstRowId: snapshot.rows.firstRowId ?? delta.row.rowId,
+          },
+          delta.row.rowId,
+        ),
       };
     case "row.upserted": {
       const index = snapshot.rows.window.findIndex((row) => row.rowId === delta.row.rowId);
@@ -105,6 +119,11 @@ export function applyConversationDelta(
             ? 0
             : Math.max(0, snapshot.rows.totalCount - removed),
           firstRowId: removesEntireActiveBranch ? null : snapshot.rows.firstRowId,
+          // 裁剪命中尾部时全序尾随 fromRowId 收缩；整支裁剪或旧快照未知（null）保持 null。
+          lastRowId:
+            removesEntireActiveBranch || snapshot.rows.lastRowId === null
+              ? null
+              : Math.min(snapshot.rows.lastRowId, delta.fromRowId - 1),
         },
       };
     }
@@ -161,6 +180,10 @@ export function applyConversationDeltaMutable(
       snapshot.rows.window.push(delta.row);
       snapshot.rows.totalCount += 1;
       snapshot.rows.firstRowId ??= delta.row.rowId;
+      snapshot.rows.lastRowId =
+        snapshot.rows.lastRowId === null
+          ? delta.row.rowId
+          : Math.max(snapshot.rows.lastRowId, delta.row.rowId);
       return;
     case "row.upserted": {
       const index = accumulator.rowIndexById.get(delta.row.rowId);
@@ -183,6 +206,11 @@ export function applyConversationDeltaMutable(
         ? 0
         : Math.max(0, snapshot.rows.totalCount - removed);
       snapshot.rows.firstRowId = removesEntireActiveBranch ? null : snapshot.rows.firstRowId;
+      // 与不可变路径同规：裁剪命中尾部时全序尾收缩，整支裁剪或未知置 null。
+      snapshot.rows.lastRowId =
+        removesEntireActiveBranch || snapshot.rows.lastRowId === null
+          ? null
+          : Math.min(snapshot.rows.lastRowId, delta.fromRowId - 1);
       accumulator.rowIndexById.clear();
       snapshot.rows.window.forEach((row, index) => accumulator.rowIndexById.set(row.rowId, index));
       return;

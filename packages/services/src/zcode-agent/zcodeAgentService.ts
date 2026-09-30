@@ -5003,6 +5003,10 @@ export function createZCodeAgentService(
           ...(resumeThoughtLevel ? { resumeThoughtLevel } : {}),
           ...(params.base ? { base: params.base } : {}),
           ...(params.visibility ? { visibility: params.visibility } : {}),
+          // 会话切回的锚点恢复：renderer 从滚动记忆读出离开位置，CLI 按锚点开首帧窗口。
+          ...(params.initialWindowAnchorRowId !== undefined
+            ? { initialWindowAnchorRowId: params.initialWindowAnchorRowId }
+            : {}),
         },
         v4ConversationSubscribeResultSchema,
       );
@@ -5285,6 +5289,7 @@ export function createZCodeAgentService(
           sessionId: params.sessionId,
           clientMode: trusted.clientMode,
           ...(params.beforeRowId !== undefined ? { beforeRowId: params.beforeRowId } : {}),
+          ...(params.afterRowId !== undefined ? { afterRowId: params.afterRowId } : {}),
           limit: params.limit,
         },
         v4ConversationRowsRangeResultSchema,

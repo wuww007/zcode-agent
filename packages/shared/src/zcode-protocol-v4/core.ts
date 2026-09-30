@@ -73,6 +73,9 @@ export const PROTOCOL_V4_LIMITS = {
   subscriberBufferMaxBytes: 1024 * 1024,
   eventRetentionPerSession: 2000,
   snapshotTailWindowRows: 60,
+  // 会话切回的锚点窗口总量（锚点前后各取一半）。与尾部窗口同数量级，
+  // 保证首帧 wire 预算不因锚点恢复而放大。
+  snapshotAnchorWindowRows: 120,
   rowsRangeMaxLimit: 200,
   toolOutputFinalHeadBytes: 32 * 1024,
   toolOutputFinalTailBytes: 32 * 1024,

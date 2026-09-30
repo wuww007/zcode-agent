@@ -209,6 +209,10 @@ export function createAgentConversationTransport(
           sessionId,
           ...(params.base ? { base: params.base } : {}),
           ...(params.visibility ? { visibility: params.visibility } : {}),
+          // 会话切回的锚点恢复：CLI 按该行开初始快照窗口。
+          ...(params.initialWindowAnchorRowId !== undefined
+            ? { initialWindowAnchorRowId: params.initialWindowAnchorRowId }
+            : {}),
         });
         if (subscribeRuntimeGeneration !== runtimeGeneration) {
           // 旧 runtime 的迟到 ACK 可能复用新 runtime 的 subId；此处只能
@@ -378,6 +382,7 @@ export function createAgentConversationTransport(
         ...workspace,
         sessionId: params.sessionId,
         ...(params.beforeRowId !== undefined ? { beforeRowId: params.beforeRowId } : {}),
+        ...(params.afterRowId !== undefined ? { afterRowId: params.afterRowId } : {}),
         limit: params.limit,
       });
     },

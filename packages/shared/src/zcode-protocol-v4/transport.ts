@@ -114,6 +114,10 @@ export const subscribeParamsSchema = z
     base: z.object({ logEpoch: z.string(), seq: z.number() }).optional(),
     // QoS hint，只影响调度，不影响语义。
     visibility: z.enum(["foreground", "background"]).optional(),
+    // 订阅方请求以该行为中心开初始快照窗口（会话切回的滚动锚点恢复）。
+    // 仅对 conversation topic 有语义；缺失/旧发送端 = 尾部窗口。additive optional，
+    // 与 resumeThoughtLevel 同族的 host→CLI 透传参数。
+    initialWindowAnchorRowId: z.number().int().nonnegative().optional(),
   })
   .strict();
 export type SubscribeParams = z.infer<typeof subscribeParamsSchema>;
@@ -514,6 +518,9 @@ export const v4ConversationRowsRangeParamsSchema = z.object({
   clientMode: z.enum(["desktop-continuous", "web-remote-replayable"]).optional(),
   // 取 rowId < beforeRowId 的行；缺省 = 从当前尾部向前。
   beforeRowId: z.number().optional(),
+  // 取 rowId > afterRowId 的前 limit 行（锚点窗口向尾部补页）；与 beforeRowId 二选一，
+  // 同时出现时 afterRowId 优先。additive：旧 CLI 不识别会整请求解析失败，同批发布。
+  afterRowId: z.number().optional(),
   limit: z.number().min(1).max(PROTOCOL_V4_LIMITS.rowsRangeMaxLimit),
 });
 export type V4ConversationRowsRangeParams = z.infer<typeof v4ConversationRowsRangeParamsSchema>;
@@ -525,7 +532,7 @@ export const v4ConversationRowsRangeResultSchema = z.object({
   atSeq: z.number(),
   atRevision: z.number().int().nonnegative(),
   atLogEpoch: z.string(),
-  // beforeRowId 方向是否还有更早的行。
+  // 游标方向是否还有更多行（beforeRowId = 更早；afterRowId = 更晚）。
   hasMore: z.boolean(),
 });
 export type V4ConversationRowsRangeResult = z.infer<typeof v4ConversationRowsRangeResultSchema>;
