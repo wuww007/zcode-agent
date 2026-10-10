@@ -108,6 +108,7 @@ import { buildAppUsageSnapshot, resolveTzOffsetMs } from "./usage-stats-builder.
 import { createProtocolInteractionBroker } from "./interaction-broker.js";
 import { createProtocolAutomationPort } from "./automation-port.js";
 import { createProtocolOffPeakPort } from "./offpeak-port.js";
+import { createProtocolSessionSpawnPort } from "./session-spawn-port.js";
 import { createProtocolBrowserControlBroker } from "./browser-control-broker.js";
 import { mapComputerUseOperationEvent } from "./computer-use-operation-event.js";
 import { protocolMcpServersToRuntimeMcpConfig } from "./protocol-mcp-config.js";
@@ -3308,10 +3309,18 @@ async function createRecord(
   const eventStore = context.deps.createSessionEventStore(sessionId);
   const traceContext = createProtocolRootTraceContext(sessionId, trace);
   const initialModel = "model" in params ? params.model : undefined;
+  // SpawnSession 来源标记只是 parentSessionId 的兜底（bridge 双写防单路遗漏）。
+  // sessionSpawnPort 的注入门看 parentSessionId 而非原始标记：parentID 已持久化，
+  // 冷恢复（activateSessionForResume 回传 session.parentID）后派生会话不会重新
+  // 拿到 SpawnSession——标记字段本身不落库，按它做门会在 resume 后失效（递归重开）。
+  const spawnedFromParentSessionId =
+    "spawnedFromParentSessionId" in params && params.spawnedFromParentSessionId
+      ? (params.spawnedFromParentSessionId as SessionId)
+      : undefined;
   const parentSessionId =
     "parentSessionId" in params && params.parentSessionId
       ? (params.parentSessionId as SessionId)
-      : undefined;
+      : spawnedFromParentSessionId;
   const taskType = params.taskType ?? "interactive";
   const runtimeMcp = protocolMcpServersToRuntimeMcpConfig(params.mcpServers);
   context.logger?.info("ZCode Protocol createRecord MCP config", {
@@ -3382,6 +3391,11 @@ async function createRecord(
     context.appRuntimePreferences.offPeakToolEnabled === true
       ? { offPeakPort: createProtocolOffPeakPort(context, () => ownSessionRecord) }
       : {}),
+    // 平级任务会话拉起端口：只注入根会话（parentSessionId 缺席）。派生会话——spawn 拉起、
+    // fork、selection side chat——parentID 已持久化，冷恢复后同样拿不到端口（防递归派生）。
+    ...(parentSessionId
+      ? {}
+      : { sessionSpawnPort: createProtocolSessionSpawnPort(context, () => ownSessionRecord) }),
     resolveInitialBashShellSelection: startupPreferences.resolveInitialBashShellSelection,
     // browser-use：agent.browsers.* 经此把命令转成 interaction/browserExecute 反向请求。
     browserControlPort: createProtocolBrowserControlBroker(context),

@@ -2090,6 +2090,13 @@ export function createLocalServices(options: {
     ...(modelSelectionReadinessSource ? { modelSelectionReadinessSource } : {}),
     authorizeLocalMediaPreviewPath: options?.authorizeLocalMediaPreviewPath,
     ...offPeakToolWiring,
+    // SpawnSession 跨工作区白名单（recentProjects，最近打开在前）：仅本地 Host 注入；
+    // 远程 Host（desktop-attached-remote）没有本机最近项目概念，缺席即跨区 fail-closed。
+    ...(options?.serviceAuthorityMode === "desktop-attached-remote"
+      ? {}
+      : {
+          resolveRecentProjects: async () => (await settingService.get()).recentProjects ?? [],
+        }),
     // 动态工作流灰度：与 Off-Peak 不同，
     // 这里不按 serviceAuthorityMode 裁剪——SSH/WSL/Docker 的 desktop-attached-remote Host
     // 是它自己那些 workspace 的唯一裁决者，灰度开启时远程 workspace 同样提供工作流。

@@ -721,6 +721,7 @@ export const TID_CRON_CREATE_CARD = "cron-create-card";
 export const TID_CRON_CREATE_OPEN = "cron-create-open";
 export const TID_OFFPEAK_CREATE_CARD = "offpeak-create-card";
 export const TID_OFFPEAK_CREATE_OPEN = "offpeak-create-open";
+export const TID_SPAWN_SESSION_CARD = "spawn-session-card";
 export const TID_CONFIRM_DIALOG_CONFIRM = "confirm-dialog-confirm";
 
 /** 为动态元素生成带后缀的 testid，如 file-tree-item-/home/user */

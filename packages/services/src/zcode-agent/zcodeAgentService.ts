@@ -8,7 +8,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { ensureIndependentPlanSupport } from "./independentPlanSupport.js";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { Emitter } from "@zcode/rpc";
 import type { IDisposable } from "@zcode/rpc";
 import type {
@@ -63,6 +63,8 @@ import {
   zcodeAutomationUpdateParamsSchema,
   zcodeOffPeakCreateParamsSchema,
   zcodeOffPeakListParamsSchema,
+  zcodeSpawnPeerSessionParamsSchema,
+  zcodeSpawnPeerSessionResultSchema,
   OFF_PEAK_PROVIDER_IDS,
   zcodeComputerUseOperationEventSchema,
   zcodeProviderRuntimeHeadersCancelledSchema,
@@ -297,6 +299,7 @@ import { AutomationRepo } from "#src/session/automationRepo.js";
 import { TaskIndexRepo } from "#src/session/taskIndexRepo.js";
 import { ZCodeAgentMcpStatusModeUnsupportedError } from "#src/zcode-agent/zcodeAgentErrors.js";
 import { ZCodeAgentProcessManager } from "./zcodeAgentProcessManager.js";
+import { createHostCommandEnvelope } from "./zcodeV4HostCommand.js";
 import type { ZCodeAgentProcessManagerOptions } from "./zcodeAgentProcessManager.js";
 import type { IOffPeakTaskService } from "#src/session/offPeakTask.js";
 import {
@@ -894,6 +897,11 @@ interface CreateZCodeAgentServiceOptions extends Omit<
   resolveOffPeakTaskService?: () =>
     | Pick<IOffPeakTaskService, "createTask" | "list" | "getCodingPlanSupport">
     | undefined;
+  /**
+   * SpawnSession 跨工作区白名单：最近打开过的项目路径（settings recentProjects，有序）。
+   * spawn/peerSession 只放行名单内目标；缺席（纯 CLI/远端装配）= 跨区一律拒绝（fail-closed）。
+   */
+  resolveRecentProjects?: () => Promise<string[]>;
   /**
    * browser-use 执行桥：把 agent 的 interaction/browserExecute 反向请求转发到 main
    * （WebContentsView+CDP）。desktop host 装配时注入；缺省（纯 CLI/远控无 main）则
@@ -2691,6 +2699,123 @@ export function createZCodeAgentService(
               });
             } catch (error) {
               await respondOffPeakInternalError(client, request, workspace, error);
+            }
+          })();
+          return;
+        }
+
+        if (request.method === zcodeProtocolMethods.spawnPeerSession) {
+          const parsed = zcodeSpawnPeerSessionParamsSchema.safeParse(request.params);
+          if (!parsed.success) {
+            void client.respondError(request.id, {
+              code: -32602,
+              message: "Invalid spawn peer session params",
+              data: parsed.error.flatten(),
+            });
+            return;
+          }
+          void (async () => {
+            try {
+              const recentProjects = await options?.resolveRecentProjects?.();
+              if (!recentProjects) {
+                await client.respondError(request.id, {
+                  code: -32601,
+                  message: "Recent projects source is unavailable on this host",
+                });
+                return;
+              }
+              const target = parsed.data.workspacePath;
+              // 白名单唯一裁决点（fail-closed）：目标必须是最近打开过的项目。
+              // resolve 容忍尾分隔符/`.` 段差异；远程 identity 不在名单形态内，天然被拒。
+              const matched = recentProjects.find(
+                (project) => project === target || resolvePath(project) === resolvePath(target),
+              );
+              if (!matched) {
+                await client.respond(
+                  request.id,
+                  zcodeSpawnPeerSessionResultSchema.parse({
+                    ok: false,
+                    errorCategory: "workspace_not_recent",
+                    message:
+                      `Workspace ${target} is not in the user's recently opened projects. ` +
+                      `Pick one of the recent projects instead, or omit workspace to use the current workspace. ` +
+                      `Recent projects: ${recentProjects.join(", ")}.`,
+                    allowedWorkspaces: recentProjects,
+                  }),
+                );
+                return;
+              }
+              // 目标工作区进程按需拉起（getClient single-flight）；createSession 信封与
+              // GUI/bots v4Create 同构，spawnedFromParentSessionId 防递归 + parentID 展示。
+              const targetClient = await getClient({ workspacePath: matched });
+              await ensureAccountProviderConfigSynced({
+                client: targetClient,
+                reason: "v4_command_create_session_spawn_peer",
+                workspace: { workspacePath: matched },
+              });
+              const modelParts = parsed.data.model ? parsed.data.model.split("/") : [];
+              const providerId = modelParts[0];
+              const modelId = modelParts.slice(1).join("/");
+              const envelope = await buildConversationCommandEnvelope({
+                workspacePath: matched,
+                envelope: createHostCommandEnvelope({
+                  type: "createSession",
+                  sessionId: null,
+                  payload: {
+                    workspaceId: matched,
+                    firstInput: { text: parsed.data.prompt },
+                    ...(providerId && modelId
+                      ? { config: { provider: providerId, model: modelId } }
+                      : {}),
+                    spawnedFromParentSessionId: parsed.data.parentSessionId,
+                  },
+                }),
+              });
+              const ack: CommandAck = await targetClient.request(
+                V4_METHODS.command,
+                envelope,
+                commandAckSchema,
+              );
+              if (ack.status !== "accepted" || ack.result?.type !== "createSession") {
+                await client.respond(
+                  request.id,
+                  zcodeSpawnPeerSessionResultSchema.parse({
+                    ok: false,
+                    errorCategory: "create_failed",
+                    message:
+                      ack.message ?? `createSession in ${matched} ended with status ${ack.status}`,
+                  }),
+                );
+                return;
+              }
+              const sessionId = ack.result.sessionId;
+              if (parsed.data.title) {
+                // best-effort 标题覆盖（与本地链路同语义）：失败不连坐已创建并开跑的会话。
+                try {
+                  const renameClient = await getClient({ workspacePath: matched });
+                  const renameAck: CommandAck = await renameClient.request(
+                    V4_METHODS.command,
+                    createHostCommandEnvelope({
+                      type: "renameSession",
+                      sessionId,
+                      payload: { title: parsed.data.title },
+                    }),
+                    commandAckSchema,
+                  );
+                  void renameAck;
+                } catch {
+                  // 标题失败静默；会话已创建，不能因 rename 报错让调用方误判整体失败。
+                }
+              }
+              await client.respond(
+                request.id,
+                zcodeSpawnPeerSessionResultSchema.parse({ ok: true, sessionId }),
+              );
+            } catch (error) {
+              await client.respondError(request.id, {
+                code: -32603,
+                message: error instanceof Error ? error.message : String(error),
+              });
             }
           })();
           return;

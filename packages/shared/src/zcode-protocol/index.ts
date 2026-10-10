@@ -1561,6 +1561,9 @@ export const zcodeSessionCreateParamsSchema = z
     sessionId: nonEmptyString.optional(),
     workspace: zcodeWorkspaceRefSchema,
     parentSessionId: nonEmptyString.optional(),
+    // SpawnSession 工具拉起平级任务会话的来源标记：createRecord 用它挂 parentSessionId
+    // 并跳过 sessionSpawnPort 注入（防递归派生）。GUI 新建会话不携带。
+    spawnedFromParentSessionId: nonEmptyString.optional(),
     mode: zcodeSessionModeSchema.optional(),
     model: modelSelectionSchema.optional(),
     persistence: zcodeSessionPersistenceSchema.optional(),
@@ -3560,6 +3563,37 @@ export const zcodeOffPeakListResultSchema = z
   .strict();
 export type ZCodeOffPeakListProtocolResult = z.infer<typeof zcodeOffPeakListResultSchema>;
 
+// SpawnSession 跨工作区拉起平级任务会话：CLI 端口 → 宿主；宿主按 recentProjects
+// 白名单裁决后在目标工作区进程创建（复用 v4 createSession + firstInput）。
+export const zcodeSpawnPeerSessionParamsSchema = z
+  .object({
+    // 目标本地项目路径（白名单校验对象；remote identity 不在支持范围）。
+    workspacePath: nonEmptyString,
+    prompt: nonEmptyString,
+    title: nonEmptyString.optional(),
+    // "providerId/modelId"，与 offPeak/create 的 model 同形态；缺省由宿主按目标工作区默认解析。
+    model: nonEmptyString.optional(),
+    // 发起会话；写入目标 record 的 parentSessionId 与 spawn 来源标记（防递归）。
+    parentSessionId: nonEmptyString,
+  })
+  .strict();
+export type ZCodeSpawnPeerSessionProtocolParams = z.infer<typeof zcodeSpawnPeerSessionParamsSchema>;
+
+export const zcodeSpawnPeerSessionResultSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), sessionId: nonEmptyString }).strict(),
+  z
+    .object({
+      ok: z.literal(false),
+      // workspace_not_recent：不在 recentProjects 白名单（回带 allowedWorkspaces 供模型自修复）；
+      // create_failed：目标工作区创建链路失败（ack 非 accepted 等）。
+      errorCategory: z.enum(["workspace_not_recent", "create_failed"]),
+      message: nonEmptyString,
+      allowedWorkspaces: z.array(z.string()).optional(),
+    })
+    .strict(),
+]);
+export type ZCodeSpawnPeerSessionProtocolResult = z.infer<typeof zcodeSpawnPeerSessionResultSchema>;
+
 export const zcodeProtocolMethods = {
   runtimeCapabilities: "runtime/capabilities",
   computerUseOperationEvent: "computer-use/operation-event",
@@ -3649,6 +3683,8 @@ export const zcodeProtocolMethods = {
   // Off-Peak 会话内创建：与 automation 兄弟并列的独立方法族。
   offPeakCreate: "offPeak/create",
   offPeakList: "offPeak/list",
+  // SpawnSession 跨工作区拉起平级任务会话（宿主按 recentProjects 白名单裁决）。
+  spawnPeerSession: "spawn/peerSession",
   // @deprecated：host 消费已清零（zcodeAgentService 改走 v4/usage/stats）。
   // 仅剩 CLI server 的 wire 兼容 case；随旧词整体删除时一并移除。
   usageStats: "usage/stats",

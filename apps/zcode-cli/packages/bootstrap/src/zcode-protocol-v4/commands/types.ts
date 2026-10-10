@@ -239,6 +239,8 @@ export interface V4CommandCoreHost {
      * 缺省回落到进程级 workspace 结论，仍是 fail-closed。
      */
     dynamicWorkflowEnabled?: boolean;
+    /** SpawnSession 拉起平级任务会话的来源标记；createRecord 挂 parentSessionId 并跳过 SpawnSession 端口注入。 */
+    spawnedFromParentSessionId?: string;
   }): Promise<{ sessionId: string }>;
   /** 从父会话稳定落盘边界创建隐藏 selection_side_chat child。 */
   createSelectionSideSession?(

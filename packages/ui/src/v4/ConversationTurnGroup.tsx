@@ -41,6 +41,13 @@ import {
   readOffPeakCreateTaskSummary,
   type OffPeakCreateTaskSummary,
 } from "@/ToolCallBlocks/renderers/offpeak-create.js";
+import {
+  isSpawnSessionToolCall,
+  readSpawnSessionOutputSessionId,
+  readSpawnSessionToolCallSessionId,
+  SpawnSessionCard,
+  type SpawnSessionCardSession,
+} from "@/ToolCallBlocks/renderers/spawn-session.js";
 import { useZCodeIntl } from "@/i18n/IntlProvider.js";
 import type { AssistantPreviewCard } from "@/lib/assistantPreviewCards.js";
 import { useAssistantCodeCommentFeatureEnabled } from "@/AssistantCodeCommentFeatureProvider.js";
@@ -120,6 +127,12 @@ interface OffPeakTurnCard {
   rowId: number;
   toolCallId: string;
   task: OffPeakCreateTaskSummary;
+}
+
+interface SpawnSessionTurnCard {
+  rowId: number;
+  toolCallId: string;
+  session: SpawnSessionCardSession;
 }
 
 const MIN_VISIBLE_API_RETRY_ATTEMPT = 3;
@@ -501,6 +514,50 @@ function parseJsonRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+// 只收本轮 status==="success" 的 SpawnSession；每次调用产出新会话 id，无需按 id 去重。
+function resolveSpawnSessionTurnCards(rows: readonly AssistantWorkRow[]): SpawnSessionTurnCard[] {
+  const cards: SpawnSessionTurnCard[] = [];
+
+  for (const row of rows) {
+    if (row.kind !== "toolCall" || row.status !== "success") {
+      continue;
+    }
+    const node = toolCallRowToLegacyNode(row);
+    if (!isSpawnSessionToolCall(node.toolCall)) {
+      continue;
+    }
+    const sessionId =
+      readSpawnSessionOutputSessionId(row.output?.text) ??
+      readSpawnSessionToolCallSessionId(node.toolCall) ??
+      undefined;
+    // prompt/workspace 来自工具输入；解析失败不拦卡（sessionId 与提示文案仍可展示）。
+    let prompt: string | undefined;
+    let workspace: string | undefined;
+    for (const candidate of [row.input, row.inputText]) {
+      const record = parseJsonRecord(candidate);
+      if (!record) continue;
+      if (!prompt && typeof record.prompt === "string" && record.prompt.trim()) {
+        prompt = record.prompt.trim();
+      }
+      if (!workspace && typeof record.workspace === "string" && record.workspace.trim()) {
+        workspace = record.workspace.trim();
+      }
+      if (prompt && workspace) break;
+    }
+    cards.push({
+      rowId: row.rowId,
+      toolCallId: row.toolCallId,
+      session: {
+        ...(sessionId ? { sessionId } : {}),
+        ...(prompt ? { prompt } : {}),
+        ...(workspace ? { workspace } : {}),
+      },
+    });
+  }
+
+  return cards;
+}
+
 function readCronDeleteAutomationId(
   row: Extract<AssistantWorkRow, { kind: "toolCall" }>,
 ): string | undefined {
@@ -557,6 +614,20 @@ function OffPeakTurnCards({
           task={card.task}
           onOpenAutomationsMain={context.onOpenAutomationsMain}
         />
+      ))}
+    </div>
+  );
+}
+
+function SpawnSessionTurnCards({ cards }: { cards: readonly SpawnSessionTurnCard[] }) {
+  if (cards.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {cards.map((card) => (
+        <SpawnSessionCard key={`${card.rowId}:${card.toolCallId}`} session={card.session} />
       ))}
     </div>
   );
@@ -1197,6 +1268,10 @@ function ConversationTurnGroupImpl({
     () => (unit.isRunning ? [] : resolveOffPeakTurnCards(unit.assistantWorkRows)),
     [unit.assistantWorkRows, unit.isRunning],
   );
+  const spawnSessionTurnCards = useMemo(
+    () => (unit.isRunning ? [] : resolveSpawnSessionTurnCards(unit.assistantWorkRows)),
+    [unit.assistantWorkRows, unit.isRunning],
+  );
   const canRenderAssistantActions =
     !unit.timelineOnly &&
     latestAssistantTextRow?.state === "complete" &&
@@ -1399,6 +1474,7 @@ function ConversationTurnGroupImpl({
               完成后的结果摘要，必须等回复结束再跟随最终 assistant 正文收尾。 */}
           <CronAutomationTurnCards cards={cronAutomationTurnCards} context={context} />
           <OffPeakTurnCards cards={offPeakTurnCards} context={context} />
+          <SpawnSessionTurnCards cards={spawnSessionTurnCards} />
           {!isOfficeMode && unit.header?.fileChanges ? (
             <ConversationFileSummaryPanel header={unit.header} context={context} />
           ) : null}

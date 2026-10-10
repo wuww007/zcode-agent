@@ -63,6 +63,10 @@ export const commandPayloadSchemas = {
     offPeakToolEnabled: z.boolean().optional(),
     // 动态工作流灰度 flag，与 offPeakToolEnabled 同一模式。
     dynamicWorkflowEnabled: z.boolean().optional(),
+    // SpawnSession 工具创建平级任务会话时由 CLI 端口内部注入，标记来源会话：
+    // record 挂 parentSessionId，且 createRecord 不注入 sessionSpawnPort（防递归派生）。
+    // GUI 手动新建会话不携带。additive，旧 CLI 静默丢弃。
+    spawnedFromParentSessionId: z.string().min(1).optional(),
   }),
   // 父会话由 envelope.sessionId 指定；服务端从父 record 派生完整运行配置。
   // firstInput 存在时，child 创建完成后立即启动首条普通输入；缺省则保持空副屏。

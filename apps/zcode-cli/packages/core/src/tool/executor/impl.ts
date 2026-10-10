@@ -51,6 +51,9 @@ export class ToolExecutorImpl implements ToolExecutor {
       artifactStore: options.artifactStore,
       automationPort: options.automationPort,
       offPeakPort: options.offPeakPort,
+      // 逐字段重组清单：漏选这里不会有任何类型或运行时报错，只有对应工具在执行期
+      // 报「端口未配置」（注册门读的是原始 deps，两侧数据源不同才不易察觉）。
+      sessionSpawnPort: options.sessionSpawnPort,
       sessionStore: options.sessionStore,
       sessionModePort: options.sessionModePort,
       workflowPort: options.workflowPort,

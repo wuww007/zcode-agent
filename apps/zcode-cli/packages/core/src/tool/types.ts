@@ -6,6 +6,7 @@ import type {
   ExecutionShellSelection,
   AutomationPort,
   OffPeakPort,
+  SessionSpawnPort,
   EmbeddedSearchBackend,
   ExecutionPort,
   BrowserControlPort,
@@ -167,6 +168,7 @@ export interface ToolExecutionContext {
   artifactStore?: ToolArtifactStorePort;
   automationPort?: AutomationPort;
   offPeakPort?: OffPeakPort;
+  sessionSpawnPort?: SessionSpawnPort;
   sessionStore?: SessionStorePort;
   sessionModePort?: SessionModePort;
   workflowPort?: WorkflowPort;

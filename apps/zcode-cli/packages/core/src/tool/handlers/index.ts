@@ -13,6 +13,7 @@ import {
   RESOLVE_WORKFLOW_QUESTION_TOOL_NAME,
   RESUME_WORKFLOW_RUN_TOOL_NAME,
   SAVE_WORKFLOW_TOOL_NAME,
+  SPAWN_SESSION_TOOL_NAME,
   SUBMIT_RESULT_TOOL_NAME,
   type JsonSchema,
 } from "@zcode/contracts";
@@ -44,6 +45,7 @@ import {
   cronUpdateToolEntry,
 } from "./cron.js";
 import { offPeakCreateToolEntry, offPeakListToolEntry } from "./off-peak.js";
+import { spawnSessionToolEntry } from "./spawn-session.js";
 import {
   createEnterPlanModeToolEntry,
   enterPlanModeToolEntry,
@@ -91,6 +93,8 @@ export const builtInTools: ToolEntry[] = [
   cronDeleteToolEntry,
   offPeakCreateToolEntry,
   offPeakListToolEntry,
+  // 平级任务会话拉起：端口在场即注册（includeSessionSpawner，同 Cron/OffPeak 模式）。
+  spawnSessionToolEntry,
   enterPlanModeToolEntry,
   exitPlanModeToolEntry,
   askUserQuestionToolEntry,
@@ -174,6 +178,8 @@ interface RegisterBuiltInToolsOptions {
   includeAutomation?: boolean;
   /** Off-Peak 会话内创建工具面；由 host 的 offPeakToolEnabled flag（灰度/远程门）驱动。 */
   includeOffPeak?: boolean;
+  /** 平级任务会话拉起；由 host 注入的 SessionSpawnPort 驱动（spawn 来源会话与 subagent 缺席）。 */
+  includeSessionSpawner?: boolean;
   /**
    * 动态工作流灰度门。**只有显式 false
    * 才下架** DYNAMIC_WORKFLOW_TOOL_NAMES：缺席代表调用方不参与灰度（TUI、headless、
@@ -251,6 +257,9 @@ export function registerBuiltInTools(
       (entry.metadata.name === "OffPeakCreate" || entry.metadata.name === "OffPeakList") &&
       options.includeOffPeak !== true
     ) {
+      continue;
+    }
+    if (entry.metadata.name === SPAWN_SESSION_TOOL_NAME && options.includeSessionSpawner !== true) {
       continue;
     }
     if (

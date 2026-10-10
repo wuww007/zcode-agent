@@ -1107,6 +1107,7 @@ export function createConversationV4Gateway(
       mcpServers,
       offPeakToolEnabled,
       dynamicWorkflowEnabled,
+      spawnedFromParentSessionId,
     }) => {
       // workspaceId 双形态（Workspace Identity 约束）：
       // - 本地工作区 = workspacePath（identity 缺省时的 fallback）；
@@ -1130,6 +1131,11 @@ export function createConversationV4Gateway(
         // v4 createSession 必须与 legacy session/create 等价透传，否则无界面创建的会话
         // 会绕过 Host 的灰度判定，只剩进程级缺省。
         ...(dynamicWorkflowEnabled === true ? { dynamicWorkflowEnabled: true } : {}),
+        // SpawnSession 来源标记：createRecord 据此挂 parentSessionId 并跳过
+        // sessionSpawnPort 注入（spawn 出的会话不得再派生，防递归）。
+        ...(spawnedFromParentSessionId
+          ? { spawnedFromParentSessionId, parentSessionId: spawnedFromParentSessionId }
+          : {}),
       });
       return { sessionId: created.sessionId };
     },

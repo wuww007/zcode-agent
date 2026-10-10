@@ -774,6 +774,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
       modelCatalogPort,
       automationPort: options.automationPort,
       offPeakPort: options.offPeakPort,
+      // 显式逐字段转发（此块不展开 options）：漏字段会被 runtime-tools 的
+      // Boolean(deps.sessionSpawnPort) 静默关成工具不注册，展开式传参 typecheck 抓不到丢弃。
+      sessionSpawnPort: options.sessionSpawnPort,
       appVersion,
       traceContext,
     });

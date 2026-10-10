@@ -33,6 +33,7 @@ import type { ZCodeInstalledPluginData } from "../plugins.js";
 import type {
   AutomationPort,
   OffPeakPort,
+  SessionSpawnPort,
   BackgroundTaskCancelResult,
   CollaborationMode,
   ContextSourcePort,
@@ -181,6 +182,8 @@ export interface ZCodeAppOptions {
   onWorkflowEvent?: (event: WorkflowEvent) => void | Promise<void>;
   automationPort?: AutomationPort;
   offPeakPort?: OffPeakPort;
+  /** 平级任务会话拉起端口；由 createRecord 注入（派生会话缺席），转发进 AgentRuntimeDeps。 */
+  sessionSpawnPort?: SessionSpawnPort;
   /** 首次真实用户执行或 cold-resume fallback 时解析一次，之后由 app 生命周期缓存。 */
   resolveInitialBashShellSelection?: () => Promise<ExecutionShellSelection | undefined>;
   /** Trusted embedder policy; workspace/project files cannot populate this field. */

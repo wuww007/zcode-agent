@@ -18,6 +18,7 @@ const SORTED_PROVIDER_TOOL_NAMES = new Set([
   "Read",
   "ScheduleWakeup",
   "Skill",
+  "SpawnSession",
   "TaskCreate",
   "TaskGet",
   "TaskList",

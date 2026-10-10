@@ -19,6 +19,9 @@ export * from "./skill.js";
 export * from "./todo.js";
 export * from "./automation.js";
 export * from "./off-peak.js";
+// 平级任务会话拉起：名字常量被 core 的注册分支与 provider 排序读走，漏掉这行消费方拿不到
+// schema 与 SPAWN_SESSION_TOOL_NAME。
+export * from "./spawn-session.js";
 export * from "./target.js";
 export * from "./plan-mode.js";
 export * from "./ask-user-question.js";

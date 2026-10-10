@@ -164,6 +164,9 @@ const enUS: Record<string, string> = {
   "offPeak.chatCreated.queued": "Queued for idle-time compute",
   "offPeak.chatCreated.queuedAt": "#{position} in queue",
   "offPeak.chatCreated.open": "Go to idle-time tasks",
+  "spawnSession.chatCreated.defaultTitle": "Peer task session",
+  "spawnSession.chatCreated.independentHint": "Runs independently · will not notify this session",
+  "spawnSession.chatCreated.targetWorkspace": "Target project: {path}",
   "settings.computerUse.disabledToast":
     "Computer Use is disabled. Existing conversations require a ZCode restart to take effect.",
   "settings.modelProvider.connectionUnavailableNotice": "The current plan is unavailable.",
