@@ -24,19 +24,63 @@ function normalizeTargetWorkspacePath(raw: string): string {
   return isAbsolute(expanded) ? resolvePath(expanded) : resolvePath(process.cwd(), expanded);
 }
 
-/** 平级会话继承父会话的当前协作模式与模型（「对等」语义）；两者皆无时返回空对象。 */
-function buildRequestedConfig(
+/**
+ * 生效的目标模型 / 档位：工具给的显式覆盖优先，缺省继承父会话 record 的当前 selection
+ * （「对等」语义的唯一来源，与 mode 同一条读取路径）。两条链路（同区 / 跨区）都必须用它——
+ * 只在同区分支补默认，会让跨区 spawn 悄悄跑到目标工作区的默认模型上。
+ */
+function resolveEffectiveTarget(
   ownRecord: ZCodeProtocolSessionRecord | undefined,
   model: { providerId: string; modelId: string } | undefined,
-): { config?: { mode?: string; modelSelection?: { providerId: string; modelId: string } } } {
+  thoughtLevel: string | undefined,
+): { model?: { providerId: string; modelId: string }; thoughtLevel?: string } {
+  const inherited = ownRecord?.app.runtime.getSessionModelSelection();
+  const providerId = model?.providerId ?? inherited?.providerId;
+  const modelId = model?.modelId ?? inherited?.modelId;
+  const level = thoughtLevel ?? inherited?.options?.reasoningLevel;
+  return {
+    ...(providerId !== undefined && modelId !== undefined
+      ? { model: { providerId, modelId } }
+      : {}),
+    ...(level !== undefined ? { thoughtLevel: level } : {}),
+  };
+}
+
+/**
+ * 平级会话继承父会话的当前协作模式，加上 `resolveEffectiveTarget` 给出的模型与档位；
+ * 两者皆无时返回空对象。
+ *
+ * 走**结构化** `modelSelection`（v4 的正式形态，与 GUI 草稿选型同形），不发扁平的
+ * `config.provider/model/thought`（旧兼容形态）。档位在目标侧不匹配时
+ * `applyRequestedSessionConfig` 会抛错、由 createSession 降级为 warn（不连坐创建）——
+ * 但发起侧的校验已经在前，走到那一步只可能是目标进程的 provider 配置与发起进程不一致
+ * （见 spec「Non-goals」的已知边界），所以这里不重复校验。
+ */
+function buildRequestedConfig(
+  ownRecord: ZCodeProtocolSessionRecord | undefined,
+  target: { model?: { providerId: string; modelId: string }; thoughtLevel?: string },
+): {
+  config?: {
+    mode?: string;
+    modelSelection?: {
+      providerId: string;
+      modelId: string;
+      options?: { reasoningLevel: string };
+    };
+  };
+} {
   const mode = ownRecord?.app.getMode();
-  if (!mode && !model) return {};
+  const modelSelection = target.model
+    ? {
+        ...target.model,
+        ...(target.thoughtLevel ? { options: { reasoningLevel: target.thoughtLevel } } : {}),
+      }
+    : undefined;
+  if (!mode && !modelSelection) return {};
   return {
     config: {
       ...(mode ? { mode } : {}),
-      ...(model
-        ? { modelSelection: { providerId: model.providerId, modelId: model.modelId } }
-        : {}),
+      ...(modelSelection ? { modelSelection } : {}),
     },
   };
 }
@@ -70,6 +114,9 @@ export function createProtocolSessionSpawnPort(
         // 与 GUI 侧一致）；缺席说明 record 尚未就绪，fail-closed。
         throw new Error("proto.sessionNotFound");
       }
+      // 生效的目标模型/档位在分支之前算好：跨区分支自己不读父记录（那是目标进程的事），
+      // 两个分支必须共用同一份结果，否则跨区的默认继承会静默丢失。
+      const target = resolveEffectiveTarget(ownRecord, request.model, request.thoughtLevel);
       // 跨工作区目标：一个 workspaceKey 一个 CLI 进程（UI 订阅/账号/MCP 均按进程隔离），
       // 不能在本进程直接给别的项目建会话（会话对目标项目的任务列表不可见）。
       // 改走宿主反向 RPC：宿主按 recentProjects 白名单裁决后在目标进程创建（cron 派发同构）。
@@ -85,9 +132,10 @@ export function createProtocolSessionSpawnPort(
             workspacePath: targetWorkspace,
             prompt: request.prompt,
             ...(request.title ? { title: request.title } : {}),
-            ...(request.model
-              ? { model: `${request.model.providerId}/${request.model.modelId}` }
+            ...(target.model
+              ? { model: `${target.model.providerId}/${target.model.modelId}` }
               : {}),
+            ...(target.thoughtLevel ? { thoughtLevel: target.thoughtLevel } : {}),
             parentSessionId: request.parentSessionId,
           },
           zcodeSpawnPeerSessionResultSchema,
@@ -113,10 +161,10 @@ export function createProtocolSessionSpawnPort(
           // 来源标记：createRecord 据此挂 parentSessionId 并跳过 sessionSpawnPort
           // 注入——spawn 出的会话不得再派生（防递归）。
           spawnedFromParentSessionId: request.parentSessionId,
-          // 模式与模型继承走 createSession.config（首发前 applyRequestedSessionConfig
+          // 模式与模型/档位继承走 createSession.config（首发前 applyRequestedSessionConfig
           // 生效）；mode 读父记录当前值（同 fork 继承先例 registerCommittedForkBestEffort），
-          // 模型结构化透传，不做字符串往返。
-          ...buildRequestedConfig(ownRecord, request.model),
+          // 模型与档位结构化透传，不做字符串往返。
+          ...buildRequestedConfig(ownRecord, target),
         },
       } satisfies CommandEnvelope);
       if (createAck.status !== "accepted" || createAck.result?.type !== "createSession") {

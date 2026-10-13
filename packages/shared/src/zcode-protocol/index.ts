@@ -3573,6 +3573,8 @@ export const zcodeSpawnPeerSessionParamsSchema = z
     title: nonEmptyString.optional(),
     // "providerId/modelId"，与 offPeak/create 的 model 同形态；缺省由宿主按目标工作区默认解析。
     model: nonEmptyString.optional(),
+    // 目标模型的思考档位，与 model 成对（发起侧已校验）；缺省由目标进程按模型默认解析。
+    thoughtLevel: nonEmptyString.optional(),
     // 发起会话；写入目标 record 的 parentSessionId 与 spawn 来源标记（防递归）。
     parentSessionId: nonEmptyString,
   })

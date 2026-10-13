@@ -166,6 +166,7 @@ const enUS: Record<string, string> = {
   "offPeak.chatCreated.open": "Go to idle-time tasks",
   "spawnSession.chatCreated.defaultTitle": "Peer task session",
   "spawnSession.chatCreated.independentHint": "Runs independently · will not notify this session",
+  "spawnSession.chatCreated.modelLine": "Model: {model} · {level}",
   "spawnSession.chatCreated.targetWorkspace": "Target project: {path}",
   "settings.computerUse.disabledToast":
     "Computer Use is disabled. Existing conversations require a ZCode restart to take effect.",

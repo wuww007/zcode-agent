@@ -147,6 +147,18 @@ function matchEntries(reference: string, entries: ModelCatalogEntry[]): ModelCat
 }
 
 /**
+ * 档位判定：命中返回**注册表自己的拼写**（用户打的 `HIGH` 要变成目录里的 `high`，否则 canonical
+ * 回填一次就变形），不命中返回 `undefined`（含该模型根本没有档位）。措辞留给调用方——
+ * 这里只回答「属不属于」，理由同上：判定规则只有一条，措辞是各家自己的。
+ */
+export function resolveReasoningLevel(
+  entry: ModelCatalogEntry,
+  requested: string,
+): string | undefined {
+  return entry.reasoningLevels.find((candidate) => sameToken(candidate, requested));
+}
+
+/**
  * 档位选择。返回 `undefined` 表示给的档位不合法（调用点据此回 `reasoning_level_unknown`）；
  * 返回 `{}` 表示这个模型不带档位——注意这与「档位为空字符串」不是一回事，所以不能用空值合并。
  */
@@ -155,8 +167,7 @@ function resolveReasoningOptions(
   level: string | undefined,
 ): { options?: { reasoningLevel: string } } | undefined {
   if (level !== undefined) {
-    // 注册表自己的拼写胜出：用户打的 `HIGH` 要变成目录里的 `high`，否则 canonical 回填一次就变形。
-    const matched = entry.reasoningLevels.find((candidate) => sameToken(candidate, level));
+    const matched = resolveReasoningLevel(entry, level);
     return matched === undefined ? undefined : { options: { reasoningLevel: matched } };
   }
   if (entry.reasoningLevels.length === 0 || entry.defaultReasoningLevel === undefined) return {};

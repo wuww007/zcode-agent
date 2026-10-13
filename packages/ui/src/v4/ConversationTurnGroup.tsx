@@ -530,9 +530,11 @@ function resolveSpawnSessionTurnCards(rows: readonly AssistantWorkRow[]): SpawnS
       readSpawnSessionOutputSessionId(row.output?.text) ??
       readSpawnSessionToolCallSessionId(node.toolCall) ??
       undefined;
-    // prompt/workspace 来自工具输入；解析失败不拦卡（sessionId 与提示文案仍可展示）。
+    // prompt/workspace/model/thoughtLevel 来自工具输入；解析失败不拦卡（sessionId 与提示文案仍可展示）。
     let prompt: string | undefined;
     let workspace: string | undefined;
+    let model: string | undefined;
+    let thoughtLevel: string | undefined;
     for (const candidate of [row.input, row.inputText]) {
       const record = parseJsonRecord(candidate);
       if (!record) continue;
@@ -542,7 +544,13 @@ function resolveSpawnSessionTurnCards(rows: readonly AssistantWorkRow[]): SpawnS
       if (!workspace && typeof record.workspace === "string" && record.workspace.trim()) {
         workspace = record.workspace.trim();
       }
-      if (prompt && workspace) break;
+      // 显式指定的模型/档位（模式二）；继承模式下工具入参里没有这两个字段。
+      if (!model && typeof record.model === "string" && record.model.trim()) {
+        model = record.model.trim();
+      }
+      if (!thoughtLevel && typeof record.thoughtLevel === "string" && record.thoughtLevel.trim()) {
+        thoughtLevel = record.thoughtLevel.trim();
+      }
     }
     cards.push({
       rowId: row.rowId,
@@ -551,6 +559,8 @@ function resolveSpawnSessionTurnCards(rows: readonly AssistantWorkRow[]): SpawnS
         ...(sessionId ? { sessionId } : {}),
         ...(prompt ? { prompt } : {}),
         ...(workspace ? { workspace } : {}),
+        ...(model ? { model } : {}),
+        ...(thoughtLevel ? { thoughtLevel } : {}),
       },
     });
   }

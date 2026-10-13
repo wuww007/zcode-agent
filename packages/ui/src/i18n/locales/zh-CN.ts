@@ -160,6 +160,7 @@ const zhCN: Record<string, string> = {
   "offPeak.chatCreated.boundHint": "将在本会话中运行",
   "spawnSession.chatCreated.defaultTitle": "平级任务会话",
   "spawnSession.chatCreated.independentHint": "独立运行 · 不会通知本会话",
+  "spawnSession.chatCreated.modelLine": "模型：{model} · {level}",
   "spawnSession.chatCreated.targetWorkspace": "目标项目：{path}",
   "settings.computerUse.disabledToast": "电脑控制已关闭，已有对话需重启 ZCode 后生效。",
   "settings.modelProvider.connectionUnavailableNotice": "当前套餐已不可用。",

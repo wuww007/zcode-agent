@@ -13,6 +13,13 @@ export interface SpawnSessionCardSession {
   prompt?: string;
   /** 目标项目路径（工具输入 workspace）；缺省=当前工作区，不展示。 */
   workspace?: string;
+  /**
+   * 显式指定的目标模型（工具输入 model，规范形 `providerId/modelId`）；缺省（继承当前会话）时缺席。
+   * 只在显式指定时展示——继承模式跑的就是用户当前的选择，多写一行反而像是发生了一次切换。
+   */
+  model?: string;
+  /** 与 `model` 成对的目标思考档位（工具输入 thoughtLevel）。 */
+  thoughtLevel?: string;
 }
 
 const MAX_PROMPT_DISPLAY_LENGTH = 80;
@@ -108,6 +115,14 @@ export function SpawnSessionCard({ session }: { session: SpawnSessionCardSession
   const hint = session.sessionId
     ? `${workspaceHint}${session.sessionId} · ${independentHint}`
     : `${workspaceHint}${independentHint}`;
+  // 只有显式指定（模式二）才有一行可说的：继承模式跑的就是用户当前的选择。
+  const modelLine =
+    session.model && session.thoughtLevel
+      ? intl.formatMessage(
+          { id: "spawnSession.chatCreated.modelLine" },
+          { model: session.model, level: session.thoughtLevel },
+        )
+      : undefined;
 
   return (
     <div
@@ -120,6 +135,9 @@ export function SpawnSessionCard({ session }: { session: SpawnSessionCardSession
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-ui-base font-medium text-foreground">{title}</div>
+          {modelLine ? (
+            <div className="mt-0.5 truncate text-ui-base text-foreground-subtle">{modelLine}</div>
+          ) : null}
           <div className="mt-0.5 truncate text-ui-base text-foreground-subtle">{hint}</div>
         </div>
       </div>

@@ -2753,9 +2753,21 @@ export function createZCodeAgentService(
                 reason: "v4_command_create_session_spawn_peer",
                 workspace: { workspacePath: matched },
               });
+              // 模型/档位由发起侧（父会话 CLI）按当前模型配置校验并 canonical 化，跨区的默认继承
+              // 也在端口侧补齐后一并传来。这里走**结构化** modelSelection（v4 正式形态，与同区链路
+              // 同形）；目标侧档位不匹配会抛错并由 createSession 降级为 warn，见 spec 的已知边界。
               const modelParts = parsed.data.model ? parsed.data.model.split("/") : [];
               const providerId = modelParts[0];
               const modelId = modelParts.slice(1).join("/");
+              const thoughtLevel = parsed.data.thoughtLevel;
+              const requestedModelSelection =
+                providerId && modelId
+                  ? {
+                      providerId,
+                      modelId,
+                      ...(thoughtLevel ? { options: { reasoningLevel: thoughtLevel } } : {}),
+                    }
+                  : undefined;
               const envelope = await buildConversationCommandEnvelope({
                 workspacePath: matched,
                 envelope: createHostCommandEnvelope({
@@ -2764,8 +2776,8 @@ export function createZCodeAgentService(
                   payload: {
                     workspaceId: matched,
                     firstInput: { text: parsed.data.prompt },
-                    ...(providerId && modelId
-                      ? { config: { provider: providerId, model: modelId } }
+                    ...(requestedModelSelection
+                      ? { config: { modelSelection: requestedModelSelection } }
                       : {}),
                     spawnedFromParentSessionId: parsed.data.parentSessionId,
                   },

@@ -9,8 +9,16 @@ export interface SessionSpawnRequest {
   prompt: string;
   /** 可选标题；缺省由宿主按既有标题自动生成。 */
   title?: string;
-  /** 继承父会话模型，由执行器注入（结构化 provider/model），不来自模型输入。 */
+  /**
+   * 显式覆盖的目标模型（结构化 provider/model）；缺省=端口取父会话当前 selection 的模型。
+   * 与 `thoughtLevel` 成对出现（配对由工具入参保证），值已按当前模型配置校验过。
+   */
   model?: { providerId: string; modelId: string };
+  /**
+   * 显式覆盖的目标思考档位（该模型声明的档位值，注册表 canonical 拼写）；缺省=父会话当前档位。
+   * 只在 `model` 存在时出现。
+   */
+  thoughtLevel?: string;
   /**
    * 目标本地项目路径；缺省=父会话工作区（本地链路）。
    * 其他路径经宿主反向 RPC 创建（宿主按最近项目白名单裁决）。
