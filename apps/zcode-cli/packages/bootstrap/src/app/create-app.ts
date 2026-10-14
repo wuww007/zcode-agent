@@ -861,6 +861,7 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
           }
         : {}),
       executionPort,
+      httpClientPort,
       localSettingStore,
       logger,
       loggerFactory,

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 30,
+  "revision": 31,
   "config": {
     "providerConfigRules": {
       "templateRules": [
@@ -868,10 +868,10 @@
           "config": {
             "enabled": true,
             "properties": {
-              "contextWindow": 200000,
+              "contextWindow": 1000000,
               "inputFormat": {
                 "supportsText": true,
-                "supportsImage": false,
+                "supportsImage": true,
                 "supportsVideo": false,
                 "supportsAudio": false,
                 "supportsPdf": false
@@ -887,7 +887,7 @@
             },
             "optionSpecs": {
               "maxOutputTokens": {
-                "max": 32000
+                "max": 128000
               },
               "reasoningLevel": {
                 "values": ["disabled", "enabled"],
@@ -5004,14 +5004,28 @@
           "templateId": "opencode-zen-responses",
           "modelId": "gpt-5.5",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-responses",
           "modelId": "gpt-5.5-pro",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
@@ -5060,14 +5074,28 @@
           "templateId": "opencode-zen-responses",
           "modelId": "gpt-5.2",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-responses",
           "modelId": "gpt-5.1",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
@@ -5102,42 +5130,84 @@
           "templateId": "opencode-zen-messages",
           "modelId": "claude-opus-4-8",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-messages",
           "modelId": "claude-opus-4-7",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-messages",
           "modelId": "claude-opus-4-6",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-messages",
           "modelId": "claude-opus-4-5",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-messages",
           "modelId": "claude-sonnet-4-6",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-messages",
           "modelId": "claude-sonnet-4-5",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
@@ -5221,7 +5291,14 @@
           "templateId": "opencode-zen-chat",
           "modelId": "big-pickle",
           "config": {
-            "enabled": true
+            "enabled": true,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
@@ -5235,35 +5312,70 @@
           "templateId": "opencode-zen-chat",
           "modelId": "hy3-free",
           "config": {
-            "enabled": true
+            "enabled": true,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-chat",
           "modelId": "ling-3.0-flash-fin-free",
           "config": {
-            "enabled": true
+            "enabled": true,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-chat",
           "modelId": "nemotron-3-ultra-free",
           "config": {
-            "enabled": true
+            "enabled": true,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-chat",
           "modelId": "nemotron-3.5-lightning-free",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "opencode-zen-chat",
           "modelId": "muse-spark-1.2-contributor-free",
           "config": {
-            "enabled": true
+            "enabled": true,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
@@ -5277,42 +5389,84 @@
           "templateId": "openrouter",
           "modelId": "anthropic/claude-opus-4.8",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "openrouter",
           "modelId": "anthropic/claude-opus-4.7",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "openrouter",
           "modelId": "anthropic/claude-opus-4.6",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "openrouter",
           "modelId": "anthropic/claude-opus-4.5",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "openrouter",
           "modelId": "anthropic/claude-sonnet-4.6",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
           "templateId": "openrouter",
           "modelId": "anthropic/claude-sonnet-4.5",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {
@@ -5452,7 +5606,14 @@
           "templateId": "openrouter",
           "modelId": "qwen/qwen3-vl-flash",
           "config": {
-            "enabled": false
+            "enabled": false,
+            "properties": {
+              "contextWindow": 200000,
+              "inputFormat": { "supportsImage": false }
+            },
+            "optionSpecs": {
+              "maxOutputTokens": { "max": 32000 }
+            }
           }
         },
         {

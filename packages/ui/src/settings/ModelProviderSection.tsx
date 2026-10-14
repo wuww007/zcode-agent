@@ -268,6 +268,8 @@ export function ModelProviderSection({
     saveDisplayOrder,
     reorderableProviderIds,
     testModelConnectivity,
+    modelRefreshWorkspaceAvailable,
+    refreshProviderModels,
     providerSettingsView,
   } = useModelProviders({
     workspacePath,
@@ -1132,6 +1134,8 @@ export function ModelProviderSection({
           // Provider 的 Effective 模型无法写入 Personal modelOrder。模型调序独立于成员来源。
           onReorderProviderModels={reorderProviderModels}
           onTestModel={handleTestModel}
+          onRefreshProviderModels={refreshProviderModels}
+          modelRefreshWorkspaceAvailable={modelRefreshWorkspaceAvailable}
           onCodingPlanLogin={handleCodingPlanLogin}
           onRetryCodingPlan={() => {
             // 取 Key 失败不等于登录失效；沿用 Host 手动刷新，不清除 OAuth 或重新登录。

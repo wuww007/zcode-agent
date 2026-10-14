@@ -3378,6 +3378,28 @@ const enUS: Record<string, string> = {
   "settings.modelProvider.models": "Model list",
   "settings.modelProvider.modelsEmpty": "No models are configured. Add a model to use it in chat.",
   "settings.modelProvider.addModel": "Add model",
+  "settings.modelProvider.refreshModels": "Refresh model list from the provider API",
+  "settings.modelProvider.refreshModels.pending": "Fetching the model list from the API…",
+  "settings.modelProvider.refreshModels.updated":
+    "Model list updated: {added} added, {removed} removed",
+  "settings.modelProvider.refreshModels.addedOnly": "Model list updated: {added} added",
+  "settings.modelProvider.refreshModels.removedOnly": "Model list updated: {removed} removed",
+  "settings.modelProvider.refreshModels.noChange": "Model list is already up to date",
+  "settings.modelProvider.refreshModels.failed": "Failed to refresh the model list: {reason}",
+  "settings.modelProvider.refreshModels.disabled":
+    "No local workspace is available, so the model list cannot be fetched from the API.",
+  "settings.modelProvider.refreshModels.error.provider-unavailable":
+    "Fill in the Base URL and API Key first",
+  "settings.modelProvider.refreshModels.error.auth-failed":
+    "API authentication failed. Check the API Key.",
+  "settings.modelProvider.refreshModels.error.unsupported-protocol":
+    "The current API protocol does not support fetching the model list.",
+  "settings.modelProvider.refreshModels.error.invalid-response":
+    "The model list returned by the API could not be parsed.",
+  "settings.modelProvider.refreshModels.error.empty-catalog": "The API returned no models.",
+  "settings.modelProvider.refreshModels.error.network":
+    "Network error: the API could not be reached.",
+  "settings.modelProvider.refreshModels.error.timeout": "Timed out fetching the model list.",
   "settings.modelProvider.modelId": "Model ID",
   "settings.modelProvider.modelDisplayName": "Display name",
   "settings.modelProvider.modelApiFormat.anthropic": "Anthropic messages",

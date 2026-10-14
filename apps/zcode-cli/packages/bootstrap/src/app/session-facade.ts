@@ -1,4 +1,5 @@
 import { updateUiLocaleInFileConfig, type ConfigResult } from "@zcode/adapters/config";
+import { fetchProviderModelCatalog } from "@zcode/adapters/model";
 import type { AgentRuntime } from "@zcode/core";
 import { resolveLocale } from "@zcode/i18n";
 import { normalizeModelSelection, type ModelSelection } from "@zcode/provider";
@@ -8,6 +9,7 @@ import {
   type CollaborationMode,
   type ExecutionPort,
   type GoalStatus,
+  type HttpClientPort,
   type Logger,
   type LoggerFactory,
   type LocalSettingStorePort,
@@ -52,6 +54,7 @@ type SessionFacade = Pick<
   | "disconnectMcpServer"
   | "generateWorkspaceText"
   | "testModelConnectivity"
+  | "fetchProviderModels"
   | "forkFromCheckpoint"
   | "getMode"
   | "getModel"
@@ -103,6 +106,7 @@ interface CreateSessionFacadeDeps {
   configuredMcpServers: Record<string, McpServerConfig>;
   configuredDefaultModelSelection?: ModelSelection;
   executionPort: ExecutionPort;
+  httpClientPort: HttpClientPort;
   localSettingStore?: LocalSettingStorePort;
   logger: Logger;
   loggerFactory: LoggerFactory;
@@ -419,6 +423,22 @@ export function createSessionFacade(deps: CreateSessionFacadeDeps): SessionFacad
           traceContext: options?.traceContext ?? deps.traceContext,
         },
       );
+    },
+    fetchProviderModels: async (input, options) => {
+      // Registry 已由协议层 refresh 过；这里只读当前快照构造请求，不旁路创建配置事实。
+      const provider = deps.providerRegistry.getProvider(input.providerId);
+      if (!provider) {
+        return {
+          ok: false as const,
+          error: { code: "provider-unavailable" as const, message: "该供应商不存在或已被删除" },
+        };
+      }
+      return fetchProviderModelCatalog({
+        providerId: provider.providerId,
+        config: provider.config,
+        httpClient: deps.httpClientPort,
+        signal: options?.abortSignal,
+      });
     },
     setMode: async (mode: CollaborationMode) => {
       const previousMode = deps.runtime.getMode();

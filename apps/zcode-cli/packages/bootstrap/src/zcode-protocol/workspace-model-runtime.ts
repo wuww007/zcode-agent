@@ -2,6 +2,7 @@
 import { createInMemorySessionEventStore } from "@zcode/adapters/storage";
 import type { ModelSelection } from "@zcode/contracts";
 import {
+  zcodeProviderFetchProviderModelsParamsSchema,
   zcodeProviderTestModelConnectivityParamsSchema,
   zcodeWorkspaceReadPresentationParamsSchema,
   type ZCodeWorkspaceRef,
@@ -61,6 +62,33 @@ export async function testProviderModelConnectivity(
       { abortSignal },
     );
     return { success: true as const };
+  } finally {
+    if (!active) await app.close?.();
+  }
+}
+
+export async function fetchProviderModels(
+  context: ZCodeProtocolAgentServerContext,
+  rawParams: unknown,
+) {
+  const params = parseParams(zcodeProviderFetchProviderModelsParamsSchema, rawParams);
+  // 与连接测试同规：Personal Config 跨进程 watcher 可能漏掉原子写事件，
+  // 先主动刷新 Registry，不旁路创建配置事实。
+  await context.deps.refreshProviderRegistry?.("provider-fetch-models");
+  const active = Array.from(context.sessions.values()).find(
+    (record) => record.workspace.workspaceKey === params.workspace.workspaceKey,
+  );
+  const app =
+    active?.app ??
+    (await createWorkspaceZCodeApp(context, params.workspace, {
+      env: context.deps.env,
+      eventStore: createInMemorySessionEventStore(),
+      runtimeConfig: { workingDirectory: params.workspace.workspacePath },
+      sessionStore: context.deps.sessionStore,
+      version: context.deps.version,
+    }));
+  try {
+    return await app.fetchProviderModels({ providerId: params.providerId });
   } finally {
     if (!active) await app.close?.();
   }

@@ -26,6 +26,7 @@ import {
 } from "./ProviderCardSections.js";
 import { resolveModelProviderDisplayName } from "./constants.js";
 import { useProviderDetailFeedback } from "./ProviderDetailFeedback.js";
+import type { ProviderModelRefreshOutcome } from "@/hooks/useModelProviders.js";
 import { useIdleTrigger } from "./useIdleTrigger.js";
 import { useOptimisticReorder } from "./useOptimisticReorder.js";
 
@@ -43,6 +44,29 @@ function shouldApplyProviderSaveCompletion(
   completedRevision: number,
 ): boolean {
   return currentRevision === completedRevision;
+}
+
+type FormatMessage = (
+  descriptor: { id: string },
+  values?: Record<string, string | number>,
+) => string;
+
+/** 把拉取失败归一到用户可读原因：结构化 code 走专属文案，其余保留服务端消息。 */
+function resolveModelRefreshFailureReason(error: unknown, formatMessage: FormatMessage): string {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? (error as { code?: unknown }).code
+      : undefined;
+  if (typeof code === "string" && code.length > 0) {
+    const message = formatMessage({
+      id: `settings.modelProvider.refreshModels.error.${code}`,
+    });
+    // 未登记的 code 会回退成 key 本身；此时仍用服务端消息，避免把 key 暴露给用户。
+    if (!message.startsWith("settings.modelProvider.refreshModels.error.")) {
+      return message;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 function resolveProviderDraftCleanupAction({
@@ -144,6 +168,8 @@ export function InlineEditableProviderCard({
   onDeletePersonalModel,
   onDelete,
   onTestModel,
+  onRefreshProviderModels,
+  modelRefreshWorkspaceAvailable = true,
   onReorderModelIds,
   readOnlyEndpoints,
   presetApiKeyUrl,
@@ -171,6 +197,10 @@ export function InlineEditableProviderCard({
   onDeletePersonalModel?: (providerId: string, modelId: string) => Promise<unknown>;
   onDelete?: () => void | Promise<void>;
   onTestModel?: (providerId: string, modelId: string) => Promise<ModelConnectivityResult>;
+  /** 从供应商接口拉取模型目录并合并进本地列表；未装配时按钮不渲染。 */
+  onRefreshProviderModels?: (providerId: string) => Promise<ProviderModelRefreshOutcome>;
+  /** 远程会话且没有本地 workspace 时禁用刷新，不把请求路由到远端 Environment。 */
+  modelRefreshWorkspaceAvailable?: boolean;
   onReorderModelIds?: (modelIds: string[]) => Promise<void>;
   readOnlyEndpoints?: boolean;
   presetApiKeyUrl?: string;
@@ -629,6 +659,69 @@ export function InlineEditableProviderCard({
     [commitPendingDraft, onTestModel, provider.providerId],
   );
 
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const refreshModelsSeqRef = useRef(0);
+
+  const handleRefreshModels = useCallback(async () => {
+    if (!onRefreshProviderModels || refreshingModels) return;
+    const seq = refreshModelsSeqRef.current + 1;
+    refreshModelsSeqRef.current = seq;
+    const notification = saveNotificationRef.current;
+    const feedbackKey = `provider-refresh-models:${provider.providerId}`;
+    setRefreshingModels(true);
+    try {
+      // 与连接测试同规：先 flush 本卡片唯一的 Provider 草稿，
+      // 否则刚输入还没保存的 Base URL / API Key 不会参与本次拉取。
+      // pending 提示放在 flush 之后：草稿保存失败时不该先告诉用户"正在拉取模型列表"。
+      await commitPendingDraft("refresh-models");
+      notification.showFeedback({
+        key: feedbackKey,
+        message: notification.formatMessage({ id: "settings.modelProvider.refreshModels.pending" }),
+        state: "pending",
+        durationMs: 0,
+      });
+      const outcome = await onRefreshProviderModels(provider.providerId);
+      if (refreshModelsSeqRef.current !== seq) return;
+      const { added, removed } = outcome;
+      notification.showFeedback({
+        key: feedbackKey,
+        message: notification.formatMessage(
+          {
+            id:
+              added.length > 0 && removed.length > 0
+                ? "settings.modelProvider.refreshModels.updated"
+                : added.length > 0
+                  ? "settings.modelProvider.refreshModels.addedOnly"
+                  : removed.length > 0
+                    ? "settings.modelProvider.refreshModels.removedOnly"
+                    : "settings.modelProvider.refreshModels.noChange",
+          },
+          { added: added.length, removed: removed.length },
+        ),
+        state: "success",
+      });
+    } catch (error) {
+      if (refreshModelsSeqRef.current !== seq) return;
+      logger.warn("[ModelProviderSection] 刷新模型列表失败", {
+        providerId: provider.providerId,
+        error,
+      });
+      const reason = resolveModelRefreshFailureReason(error, notification.formatMessage);
+      notification.showFeedback({
+        key: feedbackKey,
+        message: notification.formatMessage(
+          { id: "settings.modelProvider.refreshModels.failed" },
+          { reason },
+        ),
+        state: "failure",
+      });
+    } finally {
+      if (refreshModelsSeqRef.current === seq) {
+        setRefreshingModels(false);
+      }
+    }
+  }, [commitPendingDraft, onRefreshProviderModels, provider.providerId, refreshingModels]);
+
   const handleModelCommit = useCallback(
     async (
       originalModelId: string,
@@ -853,6 +946,18 @@ export function InlineEditableProviderCard({
           onDeleteModel={handleDeleteModel}
           onAddModel={handleAddModel}
           onReorderModelIds={onReorderModelIds ? handleReorderModelIds : undefined}
+          onRefreshModels={
+            onRefreshProviderModels && isApiKeyProvider ? handleRefreshModels : undefined
+          }
+          refreshingModels={refreshingModels}
+          // 只按「有没有本地 workspace」禁用：Provider 自身的 issues 不阻断刷新——
+          // 拉取恰恰可能补上缺失的模型；缺 Base URL / Key 由 CLI 侧返回明确失败原因。
+          refreshModelsDisabled={!modelRefreshWorkspaceAvailable || refreshingModels}
+          refreshModelsDisabledReason={
+            modelRefreshWorkspaceAvailable
+              ? undefined
+              : intl.formatMessage({ id: "settings.modelProvider.refreshModels.disabled" })
+          }
           settingsRevision={settingsRevision ?? 0}
         />
       </div>

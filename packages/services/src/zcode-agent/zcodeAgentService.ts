@@ -70,6 +70,7 @@ import {
   zcodeProviderRuntimeHeadersCancelledSchema,
   zcodeProviderRuntimeHeadersRequestParamsSchema,
   zcodeProviderTestModelConnectivityResultSchema,
+  zcodeProviderFetchProviderModelsResultSchema,
   zcodeOfficialMcpAuthHeadersRequestParamsSchema,
   summarizeOfficialMcpIdentityHeaders,
   zcodeProtocolEmptyResultSchema,
@@ -153,6 +154,7 @@ import type {
   ZCodeAgentInstallPluginParams,
   ZCodeAgentGenerateWorkspaceTextParams,
   ZCodeAgentTestModelConnectivityParams,
+  ZCodeAgentFetchProviderModelsParams,
   ZCodeAgentGoalParams,
   ZCodeAgentGrantWorkspaceHookTrustParams,
   ZCodeAgentInitializeResult,
@@ -4560,6 +4562,24 @@ export function createZCodeAgentService(
           selection: params.selection,
         },
         zcodeProviderTestModelConnectivityResultSchema,
+        { signal: params.signal },
+      );
+    },
+
+    async fetchProviderModels(params: ZCodeAgentFetchProviderModelsParams) {
+      const client = await getClient(params);
+      await ensureAccountProviderConfigSynced({
+        client,
+        reason: "provider_fetch_provider_models",
+        workspace: params,
+      });
+      return client.request(
+        zcodeProtocolMethods.providerFetchProviderModels,
+        {
+          workspace: buildWorkspaceRef(params),
+          providerId: params.providerId,
+        },
+        zcodeProviderFetchProviderModelsResultSchema,
         { signal: params.signal },
       );
     },

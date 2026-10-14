@@ -20,9 +20,18 @@ import {
   TID_MODEL_PROVIDER_MODEL_INPUT,
   TID_MODEL_PROVIDER_NAME_EDIT_BUTTON,
   TID_MODEL_PROVIDER_NAME_INPUT,
+  TID_MODEL_PROVIDER_REFRESH_MODELS_BUTTON,
   testId,
 } from "@zcode/shared";
-import { InfoIcon, LockKeyholeIcon, Plus, Pencil, Trash2, MoreHorizontal } from "lucide-react";
+import {
+  InfoIcon,
+  LockKeyholeIcon,
+  Plus,
+  Pencil,
+  RefreshCw,
+  Trash2,
+  MoreHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button.js";
 import { Input } from "@/components/ui/input.js";
 import {
@@ -355,6 +364,10 @@ export function ProviderModelsSection({
   onDeleteModel,
   onAddModel,
   onReorderModelIds,
+  onRefreshModels,
+  refreshingModels = false,
+  refreshModelsDisabled = false,
+  refreshModelsDisabledReason,
   settingsRevision = 0,
 }: {
   providerId: string;
@@ -372,6 +385,11 @@ export function ProviderModelsSection({
   onModelEnabledChange?: (modelId: string, enabled: boolean) => void | Promise<void>;
   onAddModel: (model: ProviderSettingsFormModel) => void | Promise<void>;
   onReorderModelIds?: (modelIds: string[]) => void;
+  /** 未装配时（账号型供应商）不渲染刷新按钮。 */
+  onRefreshModels?: () => void | Promise<void>;
+  refreshingModels?: boolean;
+  refreshModelsDisabled?: boolean;
+  refreshModelsDisabledReason?: string;
   settingsRevision?: number;
 }) {
   const { intl } = useZCodeIntl();
@@ -470,17 +488,46 @@ export function ProviderModelsSection({
         <span className="text-ui-base text-foreground-subtle">
           {intl.formatMessage({ id: "settings.modelProvider.models" })}
         </span>
-        <Button
-          type="button"
-          variant="secondary"
-          size="default"
-          className="rounded-lg"
-          data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
-          onClick={openAddDialog}
-        >
-          <Plus data-icon="inline-start" aria-hidden="true" />
-          {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
-        </Button>
+        <div className="flex items-center gap-2">
+          {onRefreshModels ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="default"
+              className="rounded-lg"
+              data-testid={TID_MODEL_PROVIDER_REFRESH_MODELS_BUTTON}
+              disabled={refreshModelsDisabled}
+              // 禁用态把「为什么不能用」同时写进可访问名与原生 tooltip：
+              // Radix tooltip 不会在 disabled 按钮上触发，title 是禁用控件唯一的悬浮提示。
+              aria-label={
+                refreshModelsDisabled && refreshModelsDisabledReason
+                  ? refreshModelsDisabledReason
+                  : intl.formatMessage({ id: "settings.modelProvider.refreshModels" })
+              }
+              title={refreshModelsDisabled ? refreshModelsDisabledReason : undefined}
+              onClick={() => {
+                void Promise.resolve(onRefreshModels()).catch(() => undefined);
+              }}
+            >
+              <RefreshCw
+                data-icon="inline-start"
+                aria-hidden="true"
+                className={refreshingModels ? "animate-spin" : undefined}
+              />
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            size="default"
+            className="rounded-lg"
+            data-testid={TID_MODEL_PROVIDER_ADD_MODEL_BUTTON}
+            onClick={openAddDialog}
+          >
+            <Plus data-icon="inline-start" aria-hidden="true" />
+            {intl.formatMessage({ id: "settings.modelProvider.addModel" })}
+          </Button>
+        </div>
       </div>
       {models.length > 0 ? (
         <div className="overflow-hidden rounded-lg border border-input-border bg-input">

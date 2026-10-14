@@ -26,6 +26,7 @@ import { errorAttributionSchema } from "../zcode-protocol-v4/snapshot.js";
 import { modelSelectionSchema } from "../model-selection.js";
 import { completeModelPropertiesDataSchema } from "../model-config.js";
 import { accountProviderUnavailableReasonSchema } from "../account-provider-state.js";
+import { PROVIDER_MODEL_CATALOG_ERROR_CODES } from "../model-provider-types.js";
 import { modelExecutionSchema } from "../model-execution.js";
 import { APP_USAGE_RANGES, appUsageSnapshotSchema } from "../usage-stats.js";
 import { zcodeAutomationBotDeliveryTargetSchema } from "../bots.js";
@@ -2148,6 +2149,40 @@ export type ZCodeProviderTestModelConnectivityResult = z.infer<
   typeof zcodeProviderTestModelConnectivityResultSchema
 >;
 
+export const zcodeProviderFetchProviderModelsParamsSchema = z
+  .object({
+    workspace: zcodeWorkspaceRefSchema,
+    providerId: nonEmptyString,
+  })
+  .strict();
+export const zcodeProviderFetchProviderModelsResultSchema = z
+  .discriminatedUnion("ok", [
+    z
+      .object({
+        ok: z.literal(true),
+        models: z.array(z.object({ id: nonEmptyString }).strict()).readonly(),
+      })
+      .strict(),
+    z
+      .object({
+        ok: z.literal(false),
+        error: z
+          .object({
+            code: z.enum(PROVIDER_MODEL_CATALOG_ERROR_CODES),
+            message: nonEmptyString,
+          })
+          .strict(),
+      })
+      .strict(),
+  ])
+  .describe("拉取供应商模型目录的结果；失败走结构化返回，不向调用方抛协议错误");
+export type ZCodeProviderFetchProviderModelsParams = z.infer<
+  typeof zcodeProviderFetchProviderModelsParamsSchema
+>;
+export type ZCodeProviderFetchProviderModelsResult = z.infer<
+  typeof zcodeProviderFetchProviderModelsResultSchema
+>;
+
 export const zcodeProviderUpdateAccountConfigParamsSchema = z
   .object({
     revision: nonEmptyString,
@@ -3649,6 +3684,8 @@ export const zcodeProtocolMethods = {
   workspaceGenerateText: "workspace/generateText",
   workspaceCancelGenerateText: "workspace/cancelGenerateText",
   providerTestModelConnectivity: "provider/testModelConnectivity",
+  // 自定义供应商按已配置协议拉取接口模型目录；只读远端，不写本地配置。
+  providerFetchProviderModels: "provider/fetchProviderModels",
   mcpList: "mcp/list",
   pluginsList: "plugins/list",
   pluginsReferenceCatalog: "plugins/referenceCatalog",

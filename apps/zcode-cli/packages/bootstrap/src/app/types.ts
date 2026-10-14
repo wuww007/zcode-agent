@@ -26,6 +26,7 @@ import type {
   WorkspaceHookTrustRevokeTarget,
 } from "@zcode/shared/zcode-protocol-v4";
 import type { ZCodeModelOption } from "@zcode/shared";
+import type { ProviderModelCatalogResult } from "@zcode/shared";
 import type { EffectiveModelSelectionResult } from "@zcode/shared/model-selection";
 export type { ZCodeModelOption } from "@zcode/shared";
 import type { ModelProviderSourceTitle } from "../model-config.js";
@@ -537,6 +538,11 @@ export interface ZCodeApp {
     input: { selection: ModelSelection },
     options?: { abortSignal?: AbortSignal; traceContext?: TraceContext },
   ): Promise<void>;
+  /** 按该供应商已配置的协议拉取接口模型目录；只读远端，不写本地配置。 */
+  fetchProviderModels(
+    input: { providerId: string },
+    options?: { abortSignal?: AbortSignal; traceContext?: TraceContext },
+  ): Promise<ProviderModelCatalogResult>;
   expertWorkflowStatus(options?: {
     abortSignal?: AbortSignal;
     definitionId?: string;

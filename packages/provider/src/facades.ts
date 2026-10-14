@@ -72,6 +72,12 @@ export interface ProviderSettingsMutationTarget {
     membership?: ProviderModelMembership,
     useRecommendedConfig?: boolean,
   ): Promise<unknown>;
+  /** 用接口返回的模型目录整体替换 personal 成员；已存在成员与其规则不动。 */
+  refreshPersonalModels(
+    providerId: ProviderId,
+    modelIds: readonly ModelId[],
+    membership?: ProviderModelMembership,
+  ): Promise<unknown>;
   renamePersonalModel(
     providerId: ProviderId,
     currentModelId: ModelId,
@@ -369,6 +375,16 @@ export class ProviderSettingsFacade {
         this.#modelMembership(providerId),
         useRecommendedConfig,
       ),
+    );
+  }
+
+  /** 用接口返回的模型目录整体替换 personal 成员；已存在成员与其规则不动。 */
+  refreshPersonalModels(
+    providerId: ProviderId,
+    modelIds: readonly ModelId[],
+  ): Promise<ProviderSettingsView> {
+    return this.#mutateProvider(providerId, "refresh-models", (target) =>
+      target.refreshPersonalModels(providerId, modelIds, this.#modelMembership(providerId)),
     );
   }
 

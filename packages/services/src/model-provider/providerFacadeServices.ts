@@ -17,7 +17,11 @@ import {
   type SavePersonalModelDraftInput,
 } from "@zcode/provider";
 import { createServiceDescriptor } from "../descriptors.js";
-import type { ModelConnectivityResult } from "@zcode/shared";
+import type {
+  ModelConnectivityResult,
+  ProviderModelCatalogErrorCode,
+  ProviderModelCatalogResult,
+} from "@zcode/shared";
 import { createServiceLogger } from "../logger/serviceLogger.js";
 
 export type {
@@ -68,6 +72,11 @@ export interface IProviderSettingsService {
   testModelConnectivity(
     input: ProviderSettingsConnectivityRequest,
   ): Promise<ModelConnectivityResult>;
+  /**
+   * 按该供应商已配置的协议拉取接口模型目录，并整体合并进本地模型列表：
+   * 删除目录里没有的、添加目录里新增的，已存在的成员与其个人配置不动。
+   */
+  refreshProviderModels(input: ProviderSettingsRefreshModelsRequest): Promise<ProviderSettingsView>;
 }
 
 export const IProviderSettingsService = createServiceDescriptor<IProviderSettingsService>(
@@ -92,6 +101,17 @@ export type ProviderSettingsConnectivityTester = (
   input: ProviderSettingsConnectivityTestInput,
 ) => Promise<ModelConnectivityResult>;
 
+export interface ProviderSettingsRefreshModelsRequest {
+  readonly workspacePath: string;
+  readonly workspaceIdentity?: string;
+  readonly providerId: ProviderId;
+}
+
+/** 拉取供应商模型目录的执行器；由 Environment 装配决定走本地还是远端 Agent。 */
+export type ProviderModelCatalogFetcher = (
+  input: ProviderSettingsRefreshModelsRequest,
+) => Promise<ProviderModelCatalogResult>;
+
 export interface IModelSelectionService {
   readonly onDidChange: Event<ModelSelectionView>;
   getView(input?: ModelSelectionViewInput): Promise<ModelSelectionView>;
@@ -110,6 +130,7 @@ export function createProviderSettingsService(
   facade: ProviderSettingsFacade,
   ensureReady: () => Promise<void> = async () => {},
   testConnectivity?: ProviderSettingsConnectivityTester,
+  fetchProviderModels?: ProviderModelCatalogFetcher,
 ): IProviderSettingsService {
   return {
     onDidChange: toEvent((listener) => facade.onDidChange(listener)),
@@ -206,7 +227,39 @@ export function createProviderSettingsService(
         modelId: input.modelId,
       });
     },
+    refreshProviderModels: async (input) => {
+      await ensureReady();
+      if (!fetchProviderModels) {
+        throw new Error("当前 Environment 未装配模型目录拉取能力");
+      }
+      // 先等同一 Provider 的在飞操作：连接草稿刚落盘时不能拿旧 Registry 覆盖刚保存的 Key。
+      await facade.waitForProviderOperations(input.providerId);
+      const catalog = await fetchProviderModels({
+        workspacePath: input.workspacePath,
+        ...(input.workspaceIdentity ? { workspaceIdentity: input.workspaceIdentity } : {}),
+        providerId: input.providerId,
+      });
+      if (!catalog.ok) {
+        // 拉取失败不改本地列表：把失败原因交给调用方展示，不进合并写入。
+        throw new ProviderModelCatalogError(catalog.error);
+      }
+      return facade.refreshPersonalModels(
+        input.providerId,
+        catalog.models.map((model) => model.id),
+      );
+    },
   };
+}
+
+/** 拉取模型目录失败；携带协议层的结构化 code，供 UI 分流文案。 */
+export class ProviderModelCatalogError extends Error {
+  readonly code: ProviderModelCatalogErrorCode;
+
+  constructor(error: Extract<ProviderModelCatalogResult, { ok: false }>["error"]) {
+    super(error.message);
+    this.name = "ProviderModelCatalogError";
+    this.code = error.code;
+  }
 }
 
 export function createModelSelectionService(

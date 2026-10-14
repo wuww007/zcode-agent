@@ -15,6 +15,12 @@ import { persistPersonalProviderDeletion } from "@/lib/providerPersonalPersisten
 import { persistPersonalProvider } from "@/lib/providerPersonalSave.js";
 import type { ProviderOrderView } from "@/lib/modelProviderOrdering.js";
 
+/** 刷新模型列表的结果：本地列表相对刷新前的增删差集。 */
+export interface ProviderModelRefreshOutcome {
+  readonly added: readonly string[];
+  readonly removed: readonly string[];
+}
+
 export function useModelProviders(target: {
   workspacePath: string;
   workspaceIdentity?: string;
@@ -44,6 +50,9 @@ export function useModelProviders(target: {
       }),
     [effectiveModelProviders, providerSettingsView],
   );
+  // 刷新模型列表要对比刷新前后的列表；用 ref 读当前投影，避免回调身份随每次 View 变化。
+  const modelProvidersRef = useRef(effectiveModelProviders);
+  modelProvidersRef.current = effectiveModelProviders;
   const commitProviderSettingsView = useCallback(
     (view: ProviderSettingsView): void => {
       // 远端 mutation 的返回值是目标 Environment 已刷新后的权威 View，
@@ -211,6 +220,53 @@ export function useModelProviders(target: {
     ],
   );
 
+  /**
+   * 远程会话且没有本地 cwd 时 fail-closed：刷新按钮直接禁用，
+   * 与连接测试共用同一判定，不把请求路由到远端 Environment。
+   */
+  const modelRefreshWorkspaceAvailable = Boolean(
+    target.connectivityWorkspacePath?.trim() ||
+    (!target.connectivityWorkspaceRequired && !target.workspaceIdentity?.trim()),
+  );
+
+  const refreshProviderModels = useCallback(
+    async (providerId: string): Promise<ProviderModelRefreshOutcome> => {
+      // 与按钮禁用是同一条判定，但在回调内再判一次：其他调用点绕过按钮时也 fail-closed。
+      if (!modelRefreshWorkspaceAvailable) {
+        throw new Error(
+          target.connectivityUnavailableMessage ??
+            "A local workspace is unavailable for fetching the model list.",
+        );
+      }
+      const workspacePath = target.connectivityWorkspacePath?.trim() || target.workspacePath;
+      const before = new Set(
+        modelProvidersRef.current
+          .find((provider) => provider.providerId === providerId)
+          ?.models.map((model) => model.modelId) ?? [],
+      );
+      const view = await providerSettingsService.refreshProviderModels({
+        workspacePath,
+        providerId,
+      });
+      commitProviderSettingsView(view);
+      // 增删计数由刷新前后的权威 View 差集推导：用户看到的「之前」与权威返回的「之后」。
+      const after =
+        view.providers
+          .find((provider) => provider.providerId === providerId)
+          ?.models.map((model) => model.modelId) ?? [];
+      const added = after.filter((modelId) => !before.has(modelId));
+      const removed = [...before].filter((modelId) => !after.includes(modelId));
+      return { added, removed };
+    },
+    [
+      commitProviderSettingsView,
+      providerSettingsService,
+      // target 是每次渲染的新对象；与 testModelConnectivity 同规，逐个列入依赖避免拿到过期 workspace。
+      target.connectivityWorkspacePath,
+      target.workspacePath,
+    ],
+  );
+
   return {
     modelProviders: effectiveModelProviders,
     providerTemplates: providerSettingsView?.providerTemplates ?? [],
@@ -232,6 +288,8 @@ export function useModelProviders(target: {
     reorderProviderModels,
     saveDisplayOrder,
     testModelConnectivity,
+    modelRefreshWorkspaceAvailable,
+    refreshProviderModels,
     providerSettingsView,
   };
 }

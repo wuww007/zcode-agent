@@ -365,6 +365,75 @@ export class ProviderConfigService implements ProviderSource<ProviderConfigSnaps
     });
   }
 
+  /**
+   * 用供应商接口返回的模型目录整体替换 personal 成员：删除目录里没有的，
+   * 添加目录里新增的，已存在的成员与其个人配置规则一律不动。
+   * 成员、顺序、模型规则在同一次 Repository update 内提交，避免出现「列表已变但规则未清」的中间态。
+   */
+  async refreshPersonalModels(
+    providerId: ProviderId,
+    modelIds: readonly ModelId[],
+    membership?: ProviderModelMembership,
+  ): Promise<ProviderConfigLayerSnapshot> {
+    const normalizedProviderId = normalizeId("providerId", providerId);
+    const nextModelIds = uniqueInOrder(modelIds.map((modelId) => normalizeId("modelId", modelId)));
+    const zcodeBuiltin = await this.#zcodeBuiltinSource.read();
+    return this.#updatePersonal((current) => {
+      assertMembershipCurrent(membership, normalizedProviderId, current);
+      const provider = writableProviderOverlay(zcodeBuiltin, current, normalizedProviderId);
+      const builtinModelIds =
+        membership?.inheritedModelIds ??
+        resolveProviderBuiltinModelIds(zcodeBuiltin, current.providers, normalizedProviderId);
+      const builtinIds = new Set(builtinModelIds);
+      const currentModelIds = provider.personalModelIds ?? [];
+      const currentModelIdSet = new Set(currentModelIds);
+      // 已存在成员保持原相对顺序在前，目录里的新成员追加在后。
+      // 若直接把 personalModelIds 换成目录顺序，modelOrder 为空/未声明时
+      // resolveOwnedOrder 会退化成目录顺序，把用户已有的排列改写掉。
+      const nextPersonalModelIds = [
+        ...currentModelIds.filter((modelId) => nextModelIds.includes(modelId)),
+        ...nextModelIds.filter(
+          (modelId) => !currentModelIdSet.has(modelId) && !builtinIds.has(modelId),
+        ),
+      ];
+      const nextModelIdSet = new Set(nextPersonalModelIds);
+      const removedModelIds = currentModelIds.filter((modelId) => !nextModelIdSet.has(modelId));
+      const addedModelIds = nextPersonalModelIds.filter(
+        (modelId) => !currentModelIdSet.has(modelId),
+      );
+      if (removedModelIds.length === 0 && addedModelIds.length === 0) {
+        // 目录与本地一致时不产生内容变化：个人配置按内容哈希派生 revision，
+        // 同内容写入不改变版本号，Registry 与 watcher 不会看到假的更新。
+        return {
+          providers: current.providers,
+          models: current.models,
+          providerOrder: current.providerOrder,
+        };
+      }
+      let models = current.models;
+      for (const modelId of removedModelIds) {
+        models = models.deleteExact(normalizedProviderId, modelId);
+      }
+      for (const modelId of addedModelIds) {
+        // 与「添加模型」一致：只落 enabled，其余走推荐配置，不把 inherited 物化成个人规则。
+        models = models.setExact(normalizedProviderId, modelId, new ModelConfig({ enabled: true }));
+      }
+      return {
+        providers: current.providers.set(
+          normalizedProviderId,
+          provider
+            .withPersonalModelIds(nextPersonalModelIds)
+            // 传旧顺序：resolveOwnedOrder 保留用户已存顺序，并自动剔除被删成员。
+            .withModelOrder(
+              normalizeModelOrder(builtinModelIds, nextPersonalModelIds, provider.modelOrder ?? []),
+            ),
+        ),
+        models,
+        providerOrder: current.providerOrder,
+      };
+    });
+  }
+
   async renamePersonalModel(
     providerId: ProviderId,
     currentModelId: ModelId,

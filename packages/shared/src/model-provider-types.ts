@@ -79,3 +79,32 @@ export type ModelConnectivityResult =
         readonly code?: "provider-unavailable" | "model-unavailable";
       };
     };
+
+/** 拉取供应商模型目录的失败原因；协议 schema 与 CLI 实现共用这一份枚举。 */
+export const PROVIDER_MODEL_CATALOG_ERROR_CODES = [
+  "provider-unavailable",
+  "auth-failed",
+  "unsupported-protocol",
+  "invalid-response",
+  "empty-catalog",
+  "network",
+  "timeout",
+] as const;
+
+export type ProviderModelCatalogErrorCode = (typeof PROVIDER_MODEL_CATALOG_ERROR_CODES)[number];
+
+/** 供应商接口返回的一个模型目录项。 */
+export interface ProviderModelCatalogEntry {
+  readonly id: string;
+}
+
+/** 按供应商协议拉取模型目录的结果；失败走结构化返回，不向调用方抛协议错误。 */
+export type ProviderModelCatalogResult =
+  | { readonly ok: true; readonly models: readonly ProviderModelCatalogEntry[] }
+  | {
+      readonly ok: false;
+      readonly error: {
+        readonly code: ProviderModelCatalogErrorCode;
+        readonly message: string;
+      };
+    };

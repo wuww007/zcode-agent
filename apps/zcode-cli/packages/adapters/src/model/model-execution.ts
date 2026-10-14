@@ -24,6 +24,7 @@ import { createAnthropicCompatFetch } from "./anthropic-stream-compat.js";
 import { createOpenAIResponsesJsonCompatFetch } from "./openai-responses-json-compat.js";
 import { createModelOptionMapFetch, type RawRequestBodyCapture } from "./model-option-map-fetch.js";
 import { createNetworkProxyFetch } from "../network/proxy-fetch.js";
+import { normalizeAnthropicBaseURL } from "./provider-model-catalog.js";
 import { createOfficialCodingPlanGatewayFetch } from "./official-coding-plan-gateway.js";
 import { normalizeModelTlsFailure } from "./failure-tls.js";
 import { mergeModelRequestHeaders } from "./model-request-headers.js";
@@ -406,32 +407,6 @@ function hasHeader(headers: Record<string, string> | undefined, name: string): b
   }
   const normalizedName = name.toLowerCase();
   return Object.keys(headers).some((key) => key.toLowerCase() === normalizedName);
-}
-
-function normalizeAnthropicBaseURL(baseURL: string | undefined): string | undefined {
-  const trimmed = baseURL?.trim();
-  if (!trimmed) {
-    return undefined;
-  }
-
-  try {
-    const url = new URL(trimmed);
-    const pathname = url.pathname.replace(/\/+$/u, "");
-    if (pathname.toLowerCase().endsWith("/v1")) {
-      url.pathname = pathname;
-      return url.href;
-    }
-
-    // Anthropic's AI SDK provider appends /messages to baseURL, so explicit
-    // gateway roots must include the /v1 API prefix at the adapter boundary.
-    url.pathname = `${pathname}/v1`;
-    return url.href;
-  } catch {
-    const withoutTrailingSlash = trimmed.replace(/\/+$/u, "");
-    return withoutTrailingSlash.toLowerCase().endsWith("/v1")
-      ? withoutTrailingSlash
-      : `${withoutTrailingSlash}/v1`;
-  }
 }
 
 export function createProviderBusinessErrorFetch(
