@@ -212,7 +212,7 @@ export function resolveModeOptionIcon(value: unknown): LucideIcon {
   if (typeof value === "string" && value.toLocaleLowerCase() === "build") return HandIcon;
   if (typeof value === "string" && value.toLocaleLowerCase() === "plan") return NotepadText;
 
-  if (typeof value === "string" && /^(auto|agent|autoEdit|edit)$/i.test(value)) {
+  if (typeof value === "string" && /^(auto|agent|autoEdit|edit|guarded)$/i.test(value)) {
     return ShieldCheckIcon;
   }
 
@@ -301,6 +301,10 @@ export function ConfigSelect({
       // 高权限模式需要在工具栏中持续保持 warning 文字颜色，避免用户忽略当前风险级别。
       // 图标只负责替换为 shield-alert，颜色状态仍由 trigger 统一承载，保证 hover/展开态不闪回默认色。
       "text-warning hover:text-warning aria-expanded:text-warning",
+    // Guarded 与 YOLO 视觉区分；图标继承浅蓝色，hover/展开时也不回退为默认色。
+    option.category === "mode" &&
+      option.currentValue === "guarded" &&
+      "text-icon-blue hover:text-icon-blue aria-expanded:text-icon-blue",
   );
   const resolvedLeadingIconClassName = cn(
     "pointer-events-none size-4 text-current",

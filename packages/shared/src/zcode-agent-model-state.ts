@@ -19,9 +19,9 @@ const ZCODE_AGENT_MODE_OPTIONS = [
     description: "Ask before each file changes.",
   },
   {
-    id: "edit",
-    name: "Edit automatically",
-    description: "Edit selected files or relevant workspace files automatically.",
+    id: "guarded",
+    name: "Autonomous mode",
+    description: "Ask when there’s risk",
   },
   {
     id: "plan",
@@ -34,7 +34,11 @@ const ZCODE_AGENT_MODE_OPTIONS = [
     description: "Edit and run commands with fewer confirmations.",
   },
 ] as const satisfies readonly ZCodeTaskModeInfo[];
-const ZCODE_AGENT_MODE_ID_SET = new Set<string>(ZCODE_AGENT_MODE_OPTIONS.map((mode) => mode.id));
+// 菜单隐藏 Edit 不等于删除历史值；恢复/投影不能因候选变化把旧 edit 降为 build。
+const ZCODE_AGENT_MODE_ID_SET = new Set<string>([
+  ...ZCODE_AGENT_MODE_OPTIONS.map((mode) => mode.id),
+  "edit",
+]);
 
 // OpenRouter 会把 `:free` 作为模型 ID 的一部分。UI/configOptions 的展示态
 // 不能再用冒号分隔 thought level，否则草稿选择会静默截断真实 modelId。

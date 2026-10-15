@@ -230,6 +230,7 @@ function normalizeCronAutomationMode(
       return undefined;
     case "plan":
     case "edit":
+    case "guarded":
     case "yolo":
     case "build":
       return mode;

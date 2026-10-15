@@ -489,6 +489,10 @@ export type RunEvent =
    * `scriptPath` 是本 run 的脚本**来自哪个文件**（绝对路径）。与 `subagentModel` 逐条同规：引擎从不读、只在建 run 那一世
    * 记一次、零 SQL，宿主在两条读面上从事件头读回同一个串。缺席即这个 run 没有可编辑的脚本
    * 文件（草稿写不下去的项目、本特性之前发起的 run），模型面因此退回内联重提交的老话。
+   * `subagentPermissionMode` 是本 run 子代理的权限模式名（plan 不带入，见 specs/guarded-mode.md
+   * 「Permissions inside a run」）：与 `subagentModel` 逐条同规——引擎从不读、只在建 run 那一世
+   * 记一次、零 SQL，宿主在 resume 时从事件头读回并校验，据此让子代理以该模式运行。缺席或
+   * 宿主不认得的值即子代理跑在 YOLO 上（本特性之前发起的 run 亦然）。
    */
   | {
       type: "run-launched";
@@ -497,6 +501,7 @@ export type RunEvent =
       parentSessionId?: string;
       phaseNames?: string[];
       subagentModel?: string;
+      subagentPermissionMode?: string;
       scriptPath?: string;
       phaseAlongside?: number[][];
     }

@@ -9,9 +9,9 @@ const MODE_COMMAND_WITH_SPACE = `${MODE_COMMAND_NAME} `;
 
 const MODE_DESCRIPTIONS: Record<TuiSwitchableMode, string> = {
   build: "Ask before each file changes.",
-  edit: "Edit selected files or relevant workspace files automatically.",
   plan: "Inspect the code and present a plan before editing.",
   yolo: "Edit and run commands with fewer confirmations.",
+  guarded: "Full access with single-use confirmation for explicit dangerous commands.",
 };
 
 const TUI_MODE_OPTIONS: readonly TuiModeOption[] = TUI_SWITCHABLE_MODES.map((mode) => ({

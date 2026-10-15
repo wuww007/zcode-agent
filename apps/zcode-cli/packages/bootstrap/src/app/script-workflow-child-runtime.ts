@@ -91,6 +91,12 @@ export function createScriptWorkflowAgentRuntime(input: {
    * 不喂信号。与两个工具端口同路进 runtime deps。
    */
   modelRequestAdmission?: ModelRequestAdmission;
+  /**
+   * 交互请求 origin 上的 `description`（权限窗来源徽标的文字）。dwf actor 由工厂给出
+   * `<persona 名> (<siteId>@<ordinal>)`（workflow-actor-permission.ts）；缺席时回落到
+   * `request.opts.label` / agentType（legacy workflow child 的既有行为）。
+   */
+  interactionDescription?: string;
 }): AgentRuntime {
   // dwf actor 经 configOverrides.workflowActor 走 builder 的叠加路径，此时 systemPrompt 必须
   // 缺席（builder 对二者同在抛错）——父会话自带的 custom system prompt 不得漏给子代理，所以
@@ -133,7 +139,11 @@ export function createScriptWorkflowAgentRuntime(input: {
         agentId: input.childSessionId,
         agentType: input.request.opts?.agentType ?? "zcode-workflow",
         childSessionId: input.childSessionId,
-        description: input.request.opts?.label ?? input.request.opts?.agentType ?? "workflow agent",
+        description:
+          input.interactionDescription ??
+          input.request.opts?.label ??
+          input.request.opts?.agentType ??
+          "workflow agent",
         ...(input.traceContext.turnId === undefined
           ? {}
           : { parentTurnId: input.traceContext.turnId }),

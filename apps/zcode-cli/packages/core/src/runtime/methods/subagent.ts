@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- subagent runtime wiring 集中衔接 child runtime、tool pool、权限、MCP 与 activity watchdog，拆分需单独迁移。 */
 import { RESPOND_TO_COORDINATOR_TOOL_NAME } from "@zcode/contracts";
+import { inheritPermissionMode } from "@zcode/contracts";
 import type { SubagentRunOptions } from "@zcode/contracts";
 import {
   defaultScheduler,
@@ -481,7 +482,7 @@ function resolveSubagentPermissionMode(
     case "plan":
       return "plan";
     case undefined:
-      return builtInExplore ? "yolo" : parentMode;
+      return inheritPermissionMode(parentMode, builtInExplore ? "yolo" : parentMode);
     default:
       return parentMode;
   }

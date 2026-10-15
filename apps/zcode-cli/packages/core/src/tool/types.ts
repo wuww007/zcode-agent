@@ -3,6 +3,7 @@
 // ============================================================
 
 import type {
+  CollaborationMode,
   ExecutionShellSelection,
   AutomationPort,
   OffPeakPort,
@@ -384,6 +385,8 @@ export interface ToolPersistedModelContentInput {
 }
 
 export interface ToolRuntimePermissionCapability {
+  /** guarded 危险命令命中的规则 id；PermissionService 据此转 user-once 审批。 */
+  userApprovalRule?: string;
   allowedInPlanMode?: boolean;
   destructive?: boolean;
   needsApproval?: boolean;
@@ -395,6 +398,8 @@ export interface ToolRuntimePermissionCapability {
 }
 
 export interface ToolRuntimePermissionCapabilityContext {
+  mode?: CollaborationMode;
+  bashShellSelection?: ExecutionShellSelection;
   runtimeScope?: ToolRuntimeScope;
   workingDirectory?: string;
   workspaceRoot?: string;

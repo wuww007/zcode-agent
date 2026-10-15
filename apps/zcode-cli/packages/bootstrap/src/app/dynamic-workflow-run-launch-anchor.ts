@@ -14,6 +14,10 @@
 import type { TraceContext } from "@zcode/contracts";
 import type { JournalStorePort } from "@zcode/dynamic-workflow";
 import { uuidv7 } from "@zcode/shared";
+import {
+  parseWorkflowSubagentPermissionMode,
+  type WorkflowSubagentPermissionMode,
+} from "./workflow-actor-permission.js";
 
 export interface RunLaunchAnchor {
   /** 发起 run 那一轮的 inputId（中枢直接启动为铸出的 UUID v7）。 */
@@ -36,6 +40,11 @@ export interface RunLaunch extends RunLaunchAnchor {
    * 子代理选型同规地不属于锚点：修订记的是**这一次修订**的脚本来自哪个文件，绝不沿用前驱的。
    */
   scriptPath?: string;
+  /**
+   * 本 run 子代理的权限模式（specs/guarded-mode.md「子任务继承」第 2 类）：发起会话的权限模式
+   * （plan 不带入）。同样不属于锚点：修订是新 run，取修订那一刻会话的模式，绝不沿用前驱的。
+   */
+  subagentPermissionMode?: WorkflowSubagentPermissionMode;
   /** 与 `phaseNames` 按位置对齐的「同时在跑」表（下标指向同一张表）；同样只在建 run 那一世落 journal。 */
   phaseAlongside?: number[][];
 }
@@ -88,6 +97,26 @@ export function readRunSubagentModel(journal: JournalStorePort, runId: string): 
 export function readRunScriptPath(journal: JournalStorePort, runId: string): string | undefined {
   for (const stored of journal.listEvents(runId, { limit: RUN_LAUNCH_ANCHOR_SCAN_LIMIT })) {
     if (stored.event.type === "run-launched") return stored.event.scriptPath;
+  }
+  return undefined;
+}
+
+/**
+ * 从 journal 读回本 run 子代理的权限模式：同一条 `run-launched` 上的 `subagentPermissionMode`
+ * （specs/guarded-mode.md「子任务继承」第 2 类）。resume 据此让子代理继续跑在建 run 时的模式上，
+ * 与会话此刻的模式无关。缺席或未知值即 YOLO（本特性之前发起的 run 亦然）。
+ *
+ * 与 {@link readRunSubagentModel} 同一条扫描、同一个上限，同样刻意不挂在 {@link RunLaunchAnchor} 上：
+ * 修订是新 run，取修订那一刻会话的模式，绝不沿用前驱的。
+ */
+export function readRunSubagentPermissionMode(
+  journal: JournalStorePort,
+  runId: string,
+): WorkflowSubagentPermissionMode | undefined {
+  for (const stored of journal.listEvents(runId, { limit: RUN_LAUNCH_ANCHOR_SCAN_LIMIT })) {
+    if (stored.event.type === "run-launched") {
+      return parseWorkflowSubagentPermissionMode(stored.event.subagentPermissionMode);
+    }
   }
   return undefined;
 }

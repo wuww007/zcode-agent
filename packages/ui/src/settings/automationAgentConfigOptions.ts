@@ -1,4 +1,8 @@
-import type { ZCodeConfigOption, ZCodeProvider } from "@zcode/shared";
+import {
+  getZCodeAgentModeSelectOptions,
+  type ZCodeConfigOption,
+  type ZCodeProvider,
+} from "@zcode/shared";
 import type { ModelSelectionView } from "@zcode/services";
 import type { ModelSelectGroup, ModelSelectGroupItem } from "@/ModelConfigSelect.js";
 import {
@@ -22,8 +26,6 @@ export function resolveAutomationPreferredModelValue(
   return preferred ? encodeCustomModelValue(preferred.providerId, preferred.modelId) : null;
 }
 
-const AUTOMATION_MODE_VALUES = ["build", "edit", "plan", "yolo"] as const;
-
 export function buildAutomationModelSelectGroups(params: {
   selectedProvider: ZCodeProvider;
   labels: ModelProviderGroupLabelOptions;
@@ -43,7 +45,7 @@ export function buildAutomationModeOption(currentValue: string): ZCodeConfigOpti
     category: "mode",
     type: "select",
     currentValue,
-    options: AUTOMATION_MODE_VALUES.map((value) => ({ value, name: value })),
+    options: getZCodeAgentModeSelectOptions(),
   };
 }
 

@@ -42,6 +42,7 @@ import { isResumableSettlement } from "./dynamic-workflow-run-observation.js";
 import {
   readRunLaunchAnchor,
   readRunSubagentModel,
+  readRunSubagentPermissionMode,
   type RunLaunch,
 } from "./dynamic-workflow-run-launch-anchor.js";
 import { resolveWorkflowConcurrencyCeiling } from "./workflow-concurrency-ceiling.js";
@@ -174,6 +175,13 @@ export function launchDynamicWorkflowRun(
   // 子代理模型：submit 给的（随锚点同车）或 journal 里的（resume 从同一条 run-launched 读回）。
   // 与锚点同一条论证，两条路径因此同形；升级前的 run 两边都没有 → 缺席 = 跑在会话模型上。
   const subagentModel = input.launch?.subagentModel ?? readRunSubagentModel(deps.journal, runId);
+  // 子代理权限模式（specs/guarded-mode.md「子任务继承」第 2 类）：submit 给的
+  // 就是建 run 那一刻会话的模式；resume 只从 run-launched 读回，**不看会话此刻的模式**——
+  // 会话中途换到 Full access 不能把一个 guarded / build run 的子代理放开。
+  const subagentPermissionMode =
+    input.launch === undefined
+      ? readRunSubagentPermissionMode(deps.journal, runId)
+      : input.launch.subagentPermissionMode;
   // 字符串 → 选择，每次 launch 解析一次。进度载荷走原串（下面的 toProgressPayload），
   // actor runtime 工厂要的是结构化选择（含 reasoning 档位，pin 的两段身份带不回来）。
   const runSubagentModel =
@@ -291,6 +299,7 @@ export function launchDynamicWorkflowRun(
         // 决定），pin 只守没有它时的隐式缺省。与 pin 不同，它整条带着 reasoning 档位下去——
         // journal 的 pin 只记身份两段。
         ...(runSubagentModel === undefined ? {} : { runSubagentModel }),
+        ...(subagentPermissionMode === undefined ? {} : { subagentPermissionMode }),
       });
       // persona 的模型档位实际解析成了哪个模型，只有造好的 runtime 说得准（档位映射见
       // workflow-actor-model.ts）。先落库再接入会话：一次失败的会话持久化会让这次 ask 失败，

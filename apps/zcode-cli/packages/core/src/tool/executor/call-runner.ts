@@ -37,6 +37,7 @@ import {
   runPreToolUseHooks,
 } from "./hook-flow.js";
 import { resolveToolCallCapabilityFlags } from "./permission-capability.js";
+import { snapshotPermissionInput } from "./permission-input.js";
 import { resolveToolPermission } from "./permission-flow.js";
 import { createMcpToolDisplay, createToolResultDisplay } from "./result-display.js";
 import { appendHookAdditionalContexts, serializeOutput } from "./result-serialization.js";
@@ -287,6 +288,11 @@ async function executeToolCallImpl(
     }
   }
 
+  // Shell 已由 session owner 固定；匹配和执行复用同一选择，不为不存在的热切换再建快照。
+  const bashShellSelectionForPermission = deps.getBashShellSelection?.() ?? deps.bashShellSelection;
+  // guarded：审批入参与 cwd 在弹窗那一刻冻结——批准之后命令字节与执行目录都不得再变。
+  const guardedWorkingDirectory = mode === "guarded" ? deps.getWorkingDirectory() : undefined;
+  if (mode === "guarded") executionInput = snapshotPermissionInput(executionInput);
   const permissionResult = await resolveToolPermission(
     deps,
     canonicalToolCall,
@@ -297,6 +303,13 @@ async function executeToolCallImpl(
     traceContext,
     options?.signal,
     telemetry,
+    {
+      mode,
+      bashShellSelection: bashShellSelectionForPermission,
+      ...(guardedWorkingDirectory === undefined
+        ? {}
+        : { workingDirectory: guardedWorkingDirectory }),
+    },
   );
   if (!permissionResult.allowed) {
     const result = appendPreToolAdditionalContextsToErrorResult(
@@ -426,7 +439,8 @@ async function executeToolCallImpl(
       },
       bashShellSelection,
       setWorkingDirectory: deps.setWorkingDirectory,
-      workingDirectory: deps.getWorkingDirectory(),
+      // guarded 用批准那一刻钉住的 cwd，不读执行时的最新值。
+      workingDirectory: guardedWorkingDirectory ?? deps.getWorkingDirectory(),
       workspaceRoot: deps.getWorkspaceRoot(),
       workspaceIdentity: deps.workspaceIdentity,
       remoteSessionId: deps.remoteSessionId,

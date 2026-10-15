@@ -7,7 +7,7 @@ import {
 } from "@zcode/contracts";
 
 import type { PermissionDecisionResult, PermissionContext } from "../../permission/service.js";
-import type { ExecutableToolCall, ToolEntry } from "../types.js";
+import type { ExecutableToolCall, ToolEntry, ToolRuntimePermissionCapabilityContext } from "../types.js";
 import { applyMemoryFilePermission, targetsMemoryFile } from "./memory-file-permission.js";
 import {
   resolveRuntimePermissionCapability,
@@ -31,8 +31,18 @@ export async function recheckPermissionHookModifiedInput(input: {
   signal?: AbortSignal;
   toolCall: ExecutableToolCall;
   traceContext: TraceContext;
+  /**
+   * 与首次判权同一份上下文（mode、bashShellSelection、cwd 快照），由 executor 构造并透传。
+   * 上下文只能有一个构造点——guarded 的 matcher 依赖 mode 与 shell 文法，重判若另起一份
+   * 缺了这两个字段，matcher 会静默失效。
+   */
+  runtimePermissionContext?: ToolRuntimePermissionCapabilityContext;
 }): Promise<PermissionHookInputRecheckResult> {
-  const runtimePermissionContext = resolveRuntimePermissionContext(input.deps);
+  const mergedPermissionContext: ToolRuntimePermissionCapabilityContext = {
+    ...resolveRuntimePermissionContext(input.deps),
+    ...input.runtimePermissionContext,
+    mode: input.mode,
+  };
   const permissionContext: PermissionContext = {
     input: input.modifiedInput,
     mode: input.mode,
@@ -41,15 +51,15 @@ export async function recheckPermissionHookModifiedInput(input: {
     riskLevel: input.entry.metadata.riskLevel,
     toolName: input.toolCall.name,
     // 与首次判定同源：hook 改过 input 之后，草稿免确认仍要按同一个工作目录复核。
-    workingDirectory: input.deps.getWorkingDirectory(),
+    workingDirectory: input.runtimePermissionContext?.workingDirectory ?? input.deps.getWorkingDirectory(),
   };
   const rulePolicy = input.entry.resolvePermissionRulePolicy?.(
     input.modifiedInput,
-    runtimePermissionContext,
+    mergedPermissionContext,
   );
   let decision = input.deps.permissionService.checkPermission(
     permissionContext,
-    resolveRuntimePermissionCapability(input.entry, input.modifiedInput, runtimePermissionContext),
+    resolveRuntimePermissionCapability(input.entry, input.modifiedInput, mergedPermissionContext),
     input.projectRules,
     rulePolicy,
   );

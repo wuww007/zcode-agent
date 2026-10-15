@@ -3,7 +3,9 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   AskUserQuestionInputSchema,
   AMEND_WORKFLOW_TOOL_NAME,
+  CoreErrorType,
   CREATE_WORKFLOW_TOOL_NAME,
+  createCoreError,
   EXIT_PLAN_MODE_TOOL_NAME,
   SESSION_ENTRY_USER_INPUT_AUTO_RESOLUTION,
   type AskUserQuestion,
@@ -26,7 +28,11 @@ import type {
   V4InteractionAnswer,
   V4InteractionRegistrationOptions,
 } from "../zcode-protocol-v4/interaction-registry.js";
-import type { ZCodeProtocolAgentServerContext } from "./server-types.js";
+import {
+  PROTOCOL_CLIENT_REQUEST_ERROR_CODES,
+  ProtocolRequestError,
+  type ZCodeProtocolAgentServerContext,
+} from "./server-types.js";
 import {
   buildProtocolPermissionOptions,
   buildSessionPermissionUpdates,
@@ -45,13 +51,29 @@ export function createProtocolInteractionBroker(
 ): PermissionBrokerPort {
   return {
     requestPermission(request, options) {
-      if (request.toolName === ASK_USER_QUESTION_TOOL_NAME) {
-        return requestUserInput(context, request, options);
-      }
-      if (request.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
-        return requestExitPlanModeApproval(context, request, options);
-      }
-      return requestPermission(context, request, options);
+      const dispatch =
+        request.toolName === ASK_USER_QUESTION_TOOL_NAME
+          ? requestUserInput(context, request, options)
+          : request.toolName === EXIT_PLAN_MODE_TOOL_NAME
+            ? requestExitPlanModeApproval(context, request, options)
+            : requestPermission(context, request, options);
+      // 协议错误只在适配层翻译；core 不识别传输错误码，也不能把基础设施故障当用户拒绝。
+      // guarded 的 broker 故障必须落成 ToolCancelled/PermissionTimeout/ConfigurationError，
+      // 否则会被核心层包成 PermissionDenied，模型据此误判"命令被策略禁止"。
+      return dispatch.catch((error: unknown) => {
+        if (request.mode === "guarded" && error instanceof ProtocolRequestError) {
+          const type =
+            error.code === PROTOCOL_CLIENT_REQUEST_ERROR_CODES.cancelled
+              ? CoreErrorType.ToolCancelled
+              : error.code === PROTOCOL_CLIENT_REQUEST_ERROR_CODES.timedOut
+                ? CoreErrorType.PermissionTimeout
+                : error.code === PROTOCOL_CLIENT_REQUEST_ERROR_CODES.noClientAttached
+                  ? CoreErrorType.ConfigurationError
+                  : CoreErrorType.ToolExecutionFailed;
+          throw createCoreError(type, error.message, { cause: error, recoverable: true });
+        }
+        throw error;
+      });
     },
   };
 }

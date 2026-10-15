@@ -50,6 +50,8 @@ export type PermissionBrokerReasonSource = "plan_approval_feedback" | "workflow_
 export type PermissionOptionsPolicy = "no-always-allow" | "session-always-allow";
 
 export interface PermissionBrokerRequest {
+  /** guarded 危险审批：单次批准/拒绝；载荷不接受持久授权。 */
+  approvalMode?: "user-once";
   requestId: string;
   sessionId: SessionId;
   turnId?: TurnId;

@@ -25,6 +25,8 @@ export const SESSION_ALLOW_PERMISSION_OPTION_KIND = "allow_session";
 const SESSION_ALLOW_PERMISSION_OPTION_NAME = "Always allow in this session";
 
 interface PermissionOptionSource {
+  /** guarded 单次确认：选项收敛为 allow once / deny，不出"永久允许"类。 */
+  approvalMode?: "user-once";
   input?: unknown;
   suggestedPermissionUpdates?: PermissionUpdate[];
   optionsPolicy?: PermissionOptionsPolicy;
@@ -43,7 +45,7 @@ export function buildProtocolPermissionOptions(
   const officialCuaProjectScope = permissionUpdates.some((update) =>
     update.rules.some((rule) => rule.toolName === OFFICIAL_CUA_PERMISSION_RULE_TOOL_NAME),
   );
-  return [
+  const options: ZCodePermissionOption[] = [
     {
       kind: "allow_once",
       name: "Allow once",
@@ -99,6 +101,10 @@ export function buildProtocolPermissionOptions(
       },
     },
   ];
+  // guarded 单次确认：只保留一次允许与拒绝，不投放任何"以后不用问"类选项。
+  return source.approvalMode === "user-once"
+    ? options.filter((option) => option.kind === "allow_once" || option.kind === "deny")
+    : options;
 }
 
 /**

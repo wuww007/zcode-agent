@@ -954,6 +954,8 @@ export interface DynamicWorkflowRunProgressPayload {
 }
 
 export interface PermissionRequestedPayload {
+  /** guarded 危险审批：UI 据此隐藏"永久允许"类选项。 */
+  approvalMode?: "user-once";
   requestId?: string;
   toolCallId: ToolCallId;
   toolName: string;

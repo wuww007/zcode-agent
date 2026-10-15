@@ -160,6 +160,16 @@ export interface ZCodeProtocolAgentServerContext {
   ): Promise<T>;
 }
 
+/** server → client 请求失败的协议错误码；适配层按码翻译，不在业务逻辑中散落字面量。 */
+export const PROTOCOL_CLIENT_REQUEST_ERROR_CODES = {
+  /** 没有 ZCode Protocol client 挂载，无法投递请求。 */
+  noClientAttached: -32020,
+  /** 请求在收到应答前被取消。 */
+  cancelled: -32021,
+  /** 请求等待应答超时。 */
+  timedOut: -32022,
+} as const;
+
 export class ProtocolRequestError extends Error {
   constructor(
     readonly code: number,

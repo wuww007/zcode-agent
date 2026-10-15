@@ -51,6 +51,7 @@ import {
 } from "./dynamic-workflow-run-launch-anchor.js";
 import { isResumableRecord, type RunRegistryEntry } from "./dynamic-workflow-run-observation.js";
 import type { DynamicWorkflowRunServiceDeps } from "./dynamic-workflow-run-service.js";
+import { workflowSubagentPermissionModeField } from "./workflow-actor-permission.js";
 import type { WorkflowEscalationRegistry } from "./workflow-escalation-registry.js";
 import { createWorkflowRunControl } from "./workflow-run-control.js";
 
@@ -310,6 +311,9 @@ function startNewRun(ctx: DynamicWorkflowRunEntryContext, input: StartNewRunInpu
     // 零 SQL——它活在这条事件里，`dwf_run` 上没有对应的列。
     ...(input.scriptPath === undefined ? {} : { scriptPath: input.scriptPath }),
     ...(input.phaseAlongside === undefined ? {} : { phaseAlongside: input.phaseAlongside }),
+    // 子代理权限模式：读**建 run 这一刻**会话的模式（specs/guarded-mode.md「子任务继承」第 2 类）。
+    // 不进 resolveLaunchAnchor——修订是新 run，绝不沿用前驱的；resume 不走这里。
+    ...workflowSubagentPermissionModeField(deps.permissionMode?.()),
   };
 
   // 注册必须先于启动：取消可能在 submit 返回后的任意时刻到达，而后台追踪器也会

@@ -40,6 +40,7 @@
 
 import type { DwfRunSessionListItem } from "@zcode/adapters/storage";
 import type {
+  CollaborationMode,
   TraceContext,
   DynamicWorkflowRunEvent,
   DynamicWorkflowRunArtifact,
@@ -83,6 +84,7 @@ import type {
   PersonaSpec,
 } from "@zcode/dynamic-workflow";
 import { toProtocolEvent } from "./dynamic-workflow-run-launch.js";
+import type { WorkflowSubagentPermissionMode } from "./workflow-actor-permission.js";
 import { readWorkflowArtifactBytes } from "./dynamic-workflow-run-artifact-read.js";
 import { replayRunProgress } from "./dynamic-workflow-run-replay.js";
 import { listArtifactItemsFrom } from "./dynamic-workflow-run-artifact-queries.js";
@@ -167,6 +169,12 @@ export interface DynamicWorkflowActorRuntimeInput {
    */
   runSubagentModel?: ModelSelection;
   /**
+   * 本 run 子代理的权限模式（journal 的 `run-launched` 上的那一个；specs/guarded-mode.md
+   * 「子任务继承」第 2 类）。工厂让 actor 跑在这个模式上（workflow-actor-permission.ts），
+   * 缺席即 YOLO。
+   */
+  subagentPermissionMode?: WorkflowSubagentPermissionMode;
+  /**
    * 该 actor runtime 的模型请求准入端口：
    * driver 在治理器端口在场时给出；工厂原样放进 runtime deps。缺席即不受闸门约束。
    */
@@ -206,6 +214,12 @@ export interface DynamicWorkflowRunServiceDeps {
   artifactStore?: ToolArtifactStorePort;
   /** 造一个 actor 的 child AgentRuntime（生产包装 createScriptWorkflowAgentRuntime）。 */
   createActorRuntime: (input: DynamicWorkflowActorRuntimeInput) => AgentRuntime;
+  /**
+   * 建 run 那一刻会话的权限模式（记进 `run-launched`，子代理随之；specs/guarded-mode.md
+   * 「子任务继承」第 2 类）。惰性读——run service 是 AgentRuntime 的依赖，构造更早。
+   * 缺席即宿主不报模式（旧宿主、测试装配），journal 键缺席、子代理跑 YOLO。
+   */
+  permissionMode?: () => CollaborationMode;
   /** actor 会话的 task link 落库面；缺席则跳过建 link（会话本身仍落库）。 */
   taskLinkStore?: DynamicWorkflowTaskLinkStore;
   /**

@@ -3271,6 +3271,8 @@ function toZCodeMode(mode: ZCodeTaskMode | undefined): ZCodeSessionMode | undefi
       // automation UI 保存的“自动编辑”使用 canonical edit。旧映射漏掉该值，
       // 调用方的 ?? build 会把权限模式静默降级成“变更前确认”。
       return "edit";
+    case "guarded":
+      return "guarded";
     case "yolo":
       return "yolo";
     case "auto":

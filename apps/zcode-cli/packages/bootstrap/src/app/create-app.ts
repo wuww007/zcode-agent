@@ -84,6 +84,10 @@ import { createModelCatalogPort } from "./model-catalog-port.js";
 import { createDynamicWorkflowRunProgressSink } from "./dynamic-workflow-run-progress-sink.js";
 import { createScriptWorkflowAgentRuntime } from "./script-workflow-child-runtime.js";
 import { workflowActorModelPolicy } from "./workflow-actor-model.js";
+import {
+  workflowActorInteractionDescription,
+  workflowActorPermissionPolicy,
+} from "./workflow-actor-permission.js";
 import { workflowActorToolPolicy } from "./workflow-actor-tools.js";
 import {
   createNodeReplBrowserBroker,
@@ -589,9 +593,11 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
         : createDynamicWorkflowRunService({
             concurrency: workflowConcurrencyGovernor,
             createActorRuntime: ({
+              actor,
               persona,
               pinnedModel,
               runSubagentModel,
+              subagentPermissionMode,
               sessionId: actorSessionId,
               submitPort,
               submitProfile,
@@ -600,6 +606,8 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
             }) =>
               createScriptWorkflowAgentRuntime({
                 childSessionId: actorSessionId,
+                // 权限窗的来源徽标点名这个子代理：`<persona 名> (<siteId>@<ordinal>)`。
+                interactionDescription: workflowActorInteractionDescription({ actor, persona }),
                 configOverrides: {
                   // persona 的身份（有效名 + system）→ context builder 的工作流子代理路径。
                   // 匿名 / 无 system 时字段缺席，builder 据此省略 named 从句与 persona 段。
@@ -610,6 +618,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
                   // actor 的工具面是减法（全集减去会悬挂/越权的交互工具），只能经 configOverrides
                   // 表达（request.opts.tools 只有 allowlist）。
                   ...workflowActorToolPolicy(),
+                  // 权限面：子代理跑发起会话的权限模式（plan 除外），未记录即 YOLO
+                  // （specs/guarded-mode.md「子任务继承」第 2 类）。
+                  ...workflowActorPermissionPolicy(subagentPermissionMode),
                   // 模型面：`runSubagentModel` 是本 run 自己的选择（`subagent_model`），在场时整条
                   // 覆盖，排在 pin 之上——主代理不受它影响。没有它也没有 pin 就不覆盖——child runtime
                   // 的基线本就是父会话当前模型（工厂的基线，见 script-workflow-child-runtime.ts）。
@@ -697,6 +708,9 @@ export async function createZCodeApp(options: ZCodeAppOptions): Promise<ZCodeApp
             registerResidencyBlockingWork: (work) => {
               void getRuntime().trackResidencyBlockingWork(work);
             },
+            // 建 run 那一刻会话的权限模式（记进 run-launched，子代理随之）。
+            // 惰性同 onRunEvent：启动只来自工具调用或 v4 命令，那时 runtime 必已就绪。
+            permissionMode: () => getRuntime().getMode(),
             // 发起锚点：CreateWorkflow 在父会话的活动轮里执行，
             // 那一轮的 inputId 就是子代理 agent_step 要挂的 message。trace.turnId 对不上活动轮
             // （理论上不该发生）就交回 submit 侧兜底铸值，绝不把别的轮的 id 记成锚点。
