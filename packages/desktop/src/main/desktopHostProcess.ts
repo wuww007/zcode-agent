@@ -245,6 +245,10 @@ export function spawnHostProcess(
     }) => Promise<{ ok: boolean; [k: string]: unknown }>;
     /** Host 已完成附件授权后，由 Main 将本地视频 realpath 加入精确协议授权集合。 */
     authorizeLocalMediaPreviewPath?: (path: string) => Promise<string>;
+    /** 插件 UI 沙箱登记（host bridge → main pluginSandbox host）；缺省即桌面不支持插件 UI。 */
+    registerPluginSandbox?: (
+      input: import("@zcode/shared/mcp-apps").PluginSandboxRegisterRequestPayload,
+    ) => Promise<import("@zcode/shared/mcp-apps").PluginSandboxHandle>;
   },
   options?: SpawnHostProcessOptions,
 ): ElectronUtilityProcess {
@@ -365,6 +369,38 @@ export function spawnHostProcess(
 
     if (result.data.type === HostResponseTypes.SessionCreateTelemetry) {
       dependencies.onSessionCreateTelemetry?.(result.data);
+      return;
+    }
+
+    if (result.data.type === HostResponseTypes.PluginSandboxRegisterRequest) {
+      const request = result.data;
+      const register = dependencies.registerPluginSandbox;
+      if (!register) {
+        child.postMessage({
+          type: HostMessageTypes.PluginSandboxRegisterResult,
+          requestId: request.requestId,
+          ok: false,
+          error: "Plugin UI sandbox is unavailable.",
+        });
+        return;
+      }
+      void register(request)
+        .then((handle) => {
+          child.postMessage({
+            type: HostMessageTypes.PluginSandboxRegisterResult,
+            requestId: request.requestId,
+            ok: true,
+            ...handle,
+          });
+        })
+        .catch((error) => {
+          child.postMessage({
+            type: HostMessageTypes.PluginSandboxRegisterResult,
+            requestId: request.requestId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        });
       return;
     }
 
@@ -565,7 +601,6 @@ export function spawnHostProcess(
       });
       return;
     }
-
 
     if (result.data.type === HostResponseTypes.BotRemoteWorkspaceReconnectRequest) {
       const request = result.data;

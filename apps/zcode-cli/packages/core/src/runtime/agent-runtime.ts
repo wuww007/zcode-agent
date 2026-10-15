@@ -652,6 +652,10 @@ export interface AgentRuntime {
     input: WorkspaceGenerateTextInput,
     options?: { abortSignal?: AbortSignal; traceContext?: TraceContext },
   ): Promise<WorkspaceGenerateTextResult>;
+  sampleModel(
+    input: import("./methods/sample-model.js").SampleModelInput,
+    options: { abortSignal: AbortSignal; traceContext?: TraceContext },
+  ): Promise<import("@zcode/shared/mcp-apps").McpAppsSamplingResult>;
   testModelConnectivity(
     input: ModelConnectivityTestInput,
     options?: { abortSignal?: AbortSignal; traceContext?: TraceContext },

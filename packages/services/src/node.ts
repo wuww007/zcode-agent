@@ -405,6 +405,16 @@ import { createClientScenesService } from "./client-scenes/clientScenesService.j
 import { createSkillsService } from "./skills/skillsService.js";
 import { createSkillSyncService } from "./skill-sync/skillSyncService.js";
 import { createMcpSyncService } from "./mcp-sync/mcpSyncService.js";
+import {
+  IPluginUiAppToolsService,
+  IPluginUiSamplingService,
+  createPluginUiSamplingService,
+  IPluginUiBridgeService,
+  createPluginUiAppToolsService,
+  createPluginUiBridgeService,
+} from "./plugin-ui-bridge/index.js";
+import type { PluginSandboxHandle, PluginSandboxRegisterInput } from "@zcode/shared/mcp-apps";
+import { createPluginUiAccountBindings } from "./plugin-ui-bridge/instanceAccounts.js";
 import { createPluginSyncService } from "./plugin-sync/pluginSyncService.js";
 import { createPluginsService } from "./plugins/pluginsService.js";
 import { createPluginManagementService } from "./plugins/pluginManagementService.js";
@@ -1292,6 +1302,8 @@ export function createLocalServices(options: {
   >["prepareLegacyAccountConnections"];
   /** 注入后由 ServiceCollection 接管释放，并供 Host 其它 app-managed 下载复用。 */
   hostApiNetworkTransport?: HostApiNetworkTransport;
+  /** Desktop Main 登记插件 UI 沙箱；缺省（web / 手机远控）时插件 UI 桥拒绝打开实例。 */
+  registerPluginSandbox?: (input: PluginSandboxRegisterInput) => Promise<PluginSandboxHandle>;
   /** Desktop Host 请求 Main 登记 Agent 已授权的精确本地视频路径。 */
   authorizeLocalMediaPreviewPath?: (path: string) => Promise<string>;
   feedback?: Partial<
@@ -1669,6 +1681,44 @@ export function createLocalServices(options: {
     listMcpServerStatuses: (params) => zcodeAgentService.listMcpServerStatuses(params),
   });
   const pluginSyncService = createPluginSyncService();
+  const pluginUiAccounts = createPluginUiAccountBindings({
+    async readAccount() {
+      const provider = await oauthCredentialRepo.loadActiveProvider();
+      const profile = provider ? await oauthCredentialRepo.loadUserProfile(provider) : null;
+      return [provider, profile?.id ?? null];
+    },
+    open: (params) => zcodeAgentService.openMcpUiInstance(params),
+    close: (params) => zcodeAgentService.closeMcpUiInstance(params),
+  });
+  const pluginUiBridgeService = createPluginUiBridgeService({
+    openInstance: (params) => pluginUiAccounts.open(params),
+    closeInstance: (params) => pluginUiAccounts.close(params),
+    validateInstance: (params) => zcodeAgentService.validateMcpUiInstance(params),
+    recycleInstance: (params) => zcodeAgentService.recycleMcpUiInstance(params),
+    // 插件 UI：资源读取与 UI 工具调用都发生在 session 所在的 agent 进程；host 只做校验与登记。
+    readMcpResource: (params) => zcodeAgentService.readMcpResource(params),
+    callMcpToolForUi: (params) => zcodeAgentService.callMcpToolForUi(params),
+    cancelMcpToolCallForUi: (params) => zcodeAgentService.cancelMcpToolCallForUi(params),
+    readMcpResourceForUi: (params) => zcodeAgentService.readMcpResourceForUi(params),
+    listMcpResourcesForUi: (params) => zcodeAgentService.listMcpResourcesForUi(params),
+    listMcpResourceTemplatesForUi: (params) =>
+      zcodeAgentService.listMcpResourceTemplatesForUi(params),
+    subscribeMcpResourceForUi: (params) => zcodeAgentService.subscribeMcpResourceForUi(params),
+    unsubscribeMcpResourceForUi: (params) => zcodeAgentService.unsubscribeMcpResourceForUi(params),
+    listPluginUiSurfaces: (params) => zcodeAgentService.listPluginUiSurfaces(params),
+    registerSandbox: options.registerPluginSandbox,
+  });
+  // App-Provided Tools：页面工具登记与模型调用的认领 / 回传都发生在 session 所在的 agent 进程。
+  const pluginUiSamplingService = createPluginUiSamplingService({
+    sample: (params) => zcodeAgentService.sampleMcpApp(params),
+    cancelSampling: (params) => zcodeAgentService.cancelMcpAppSampling(params),
+  });
+  const pluginUiAppToolsService = createPluginUiAppToolsService({
+    registerAppToolsForUi: (params) => zcodeAgentService.registerAppToolsForUi(params),
+    unregisterAppToolsForUi: (params) => zcodeAgentService.unregisterAppToolsForUi(params),
+    claimAppToolCallForUi: (params) => zcodeAgentService.claimAppToolCallForUi(params),
+    resolveAppToolCallForUi: (params) => zcodeAgentService.resolveAppToolCallForUi(params),
+  });
   const subagentsService = createSubagentsService({
     isDesktopRuntime: true,
   });

@@ -257,6 +257,7 @@ import {
 import { mainMemoryDiagnosticsRegistry } from "./mainMemoryDiagnostics.js";
 
 registerLocalMediaPreviewScheme(protocol);
+protocol.registerSchemesAsPrivileged([PLUGIN_SANDBOX_PRIVILEGED_SCHEME]);
 const localMediaPreviewPathRegistry = createLocalMediaPreviewPathRegistry();
 
 // e2e 由 Chromedriver 管理远程调试端口；如果这里继续固定到 9229，
@@ -1850,6 +1851,12 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
           onOffPeakRunResult: forwardOffPeakRunResult,
           onCronSchedulerWakeRequested: wakeCronScheduler,
           onOffPeakSchedulerWakeRequested: wakeOffPeakScheduler,
+          registerPluginSandbox: (input) => {
+            const host = getPluginSandboxHost();
+            if (!host) throw new Error("Plugin UI sandbox host is not installed.");
+            const { requestId: _requestId, ...registerInput } = input;
+            return host.registerFromHost(registerInput);
+          },
           authorizeLocalMediaPreviewPath: localMediaPreviewPathRegistry.authorize,
           // Bugfix: bot service 运行在本地窗口 host 内，/reconnect 必须能从本地 host 请求 main 创建远端 session。
           handleBotRemoteWorkspaceReconnectRequest: async ({
@@ -2045,6 +2052,17 @@ app.whenReady().then(async () => {
   markMainLaunchAppReady();
   installLocalMediaPreviewProtocol(session.defaultSession.protocol, {
     isPathAuthorized: localMediaPreviewPathRegistry.isAuthorized,
+  });
+  // 插件 UI 沙箱（MCP Apps / Gen UI 页面宿主）：建注册表与两条 IPC，scheme handler 由 pluginSandboxProtocol 安装。
+  installPluginSandboxHost({
+    preloadPath: join(import.meta.dirname, "../preload/pluginSandbox.cjs"),
+    rendererDir: join(import.meta.dirname, "../renderer"),
+    aliasDir: join(import.meta.dirname, "../plugin-sandbox"),
+    // 开发模式 out/renderer 没有 shell 产物，从 renderer dev server 代理（同 cua-permission-panel 的做法）。
+    ...(!app.isPackaged && process.env["ELECTRON_RENDERER_URL"]
+      ? { devServerUrl: process.env["ELECTRON_RENDERER_URL"] }
+      : {}),
+    logger: console,
   });
   // Electron 的 net.request 只能在 app ready 后使用；灰度请求仍是旁路预热，不阻塞首个 Host。
   void desktopContextPromptRollout?.refresh();

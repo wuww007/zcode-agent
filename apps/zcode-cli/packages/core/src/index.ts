@@ -44,6 +44,11 @@ export {
   serializeSavedWorkflow,
   validateWorkflowArgs,
 } from "./tool/handlers/saved-workflows/index.js";
+// MCP App-provided tools：页面（MCP Apps guest）经插件服务注册的工具定义与执行器。
+export type {
+  McpAppProvidedToolDefinition,
+  McpAppProvidedToolExecutor,
+} from "./mcp/app-tools.js";
 export type {
   ResolvedSavedWorkflow,
   SavedWorkflowListResult,

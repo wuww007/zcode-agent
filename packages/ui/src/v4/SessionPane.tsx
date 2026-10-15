@@ -36,6 +36,7 @@ import type {
   CommandAck,
   CommandEnvelope,
   CommandType,
+  ConversationInputSource,
   ConversationSnapshot,
   ConversationRowTarget,
   SessionErrorInfo,
@@ -43,6 +44,7 @@ import type {
   V4ConversationFileChangesResult,
 } from "@zcode/shared/zcode-protocol-v4";
 import { logger } from "@/logger.js";
+import { PluginUiSessionProvider } from "@/plugin-ui/index.js";
 import {
   getConversationShareErrorDetails,
   resolveConversationShareFallbackIssueCode,
@@ -4607,6 +4609,42 @@ export function SessionPane({
       ) : null}
     </>
   );
+  const pluginUiSendText = useCallback(
+    async (
+      prompt: string,
+      options: {
+        source: ConversationInputSource;
+        attachments?: { ref: string; fileName: string; mime: string; bytes: number }[];
+      },
+    ): Promise<"sent" | "blocked" | "confirmationRequired" | undefined> => {
+      if (!sessionId) return undefined;
+      const ack = await dispatchCommand(
+        "sendText",
+        {
+          text: prompt,
+          ...(options.source ? { source: options.source } : {}),
+          ...(options.attachments?.length ? { attachments: options.attachments } : {}),
+        } as never,
+        sessionId,
+      );
+      return ack.status === "accepted" ? "sent" : "blocked";
+    },
+    [dispatchCommand, sessionId],
+  );
+  const pluginUiUploadAttachment = useCallback(
+    async (input: { fileName: string; mime: string; dataBase64: string }) => {
+      if (!sessionId) throw new Error("Plugin UI attachments need an open session");
+      const { ref } = await attachmentPut({ sessionId, ...input });
+      const padding = input.dataBase64.endsWith("==") ? 2 : input.dataBase64.endsWith("=") ? 1 : 0;
+      return {
+        ref,
+        fileName: input.fileName,
+        mime: input.mime,
+        bytes: Math.floor((input.dataBase64.length * 3) / 4) - padding,
+      };
+    },
+    [attachmentPut, sessionId],
+  );
   // 进入/退出分享时 chat dock 与分享 dock 高度不同；共享同一个 grid 单元做上下位移淡入淡出，
   // 避免父高度突变导致的硬跳。prefers-reduced-motion 由 transition 组件内部降级为立即切换。
   const conversationBottomDock = conversationBottomDockContent ? (
@@ -4616,263 +4654,279 @@ export function SessionPane({
   ) : null;
 
   return (
-    <div
-      data-testid={testId(TID_V4_SESSION_PANE, paneId)}
-      data-session-id={sessionId ?? "draft"}
-      data-initial-draft-provider={initialDraftConfigForDiagnostics?.provider ?? ""}
-      data-initial-draft-model={initialDraftConfigForDiagnostics?.model ?? ""}
-      data-projection-seq={snapshot?.seq ?? ""}
-      data-running-subagent-ids={subagents.running.map((item) => item.childSessionId).join(",")}
-      data-running-subagent-work-ids={(snapshot?.backgroundWorks ?? [])
-        .filter((work) => work.kind === "subagent" && work.status === "running")
-        .map((work) => work.childSessionId ?? work.workId)
-        .join(",")}
-      data-v4-conversation-drop-target="true"
-      onDragOver={effectiveDropTargetController?.onDragOver}
-      onDragLeave={effectiveDropTargetController?.onDragLeave}
-      onDrop={effectiveDropTargetController?.onDrop}
-      className="relative flex h-full min-h-0 flex-col"
+    <PluginUiSessionProvider
+      workspacePath={workspacePath}
+      workspaceIdentity={workspaceIdentity}
+      remoteSessionId={remoteSessionId}
+      sessionId={sessionId}
+      readOnly={readOnly}
+      sendText={pluginUiSendText}
+      uploadAttachment={pluginUiUploadAttachment}
+      projectionStore={sessionLeaseReady ? lease?.store : null}
     >
-      {effectiveDropTargetController?.active ? (
-        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-accent/55 backdrop-blur-sm">
-          <div className="flex items-center gap-2 rounded-full border border-border bg-accent px-4 py-2 text-ui-base text-foreground shadow-sm">
-            <Hand className="size-4 text-foreground" />
-            <span>
-              {intl.formatMessage({
-                id:
-                  effectiveDropTargetController.kind === "workspace"
-                    ? "chat.composer.workspaceFileDragHint"
-                    : "chat.attachments.dragHint",
-              })}
-            </span>
-          </div>
-        </div>
-      ) : null}
-      <ConversationHeader
-        title={snapshot?.meta.title ?? ""}
-        onSplitRight={onSplitRight}
-        onSplitDown={onSplitDown}
-        onClosePane={onClosePane}
-        workspaceBadge={workspaceBadge}
-        trailing={headerGenerationSpeed}
-      />
-
       <div
-        ref={conversationLayoutContainerRef}
-        className="@container/conversation relative flex min-h-0 flex-1 flex-col"
+        data-testid={testId(TID_V4_SESSION_PANE, paneId)}
+        data-session-id={sessionId ?? "draft"}
+        data-initial-draft-provider={initialDraftConfigForDiagnostics?.provider ?? ""}
+        data-initial-draft-model={initialDraftConfigForDiagnostics?.model ?? ""}
+        data-projection-seq={snapshot?.seq ?? ""}
+        data-running-subagent-ids={subagents.running.map((item) => item.childSessionId).join(",")}
+        data-running-subagent-work-ids={(snapshot?.backgroundWorks ?? [])
+          .filter((work) => work.kind === "subagent" && work.status === "running")
+          .map((work) => work.childSessionId ?? work.workId)
+          .join(",")}
+        data-v4-conversation-drop-target="true"
+        onDragOver={effectiveDropTargetController?.onDragOver}
+        onDragLeave={effectiveDropTargetController?.onDragLeave}
+        onDrop={effectiveDropTargetController?.onDrop}
+        className="relative flex h-full min-h-0 flex-col"
       >
-        <ConversationShareSelectionScrim
-          visible={shareSelectionPanelVisible}
-          interactive
-          onBackdropClick={dismissShareSelectionPanel}
-        />
-        <ConversationShareSelectionPanel
-          visible={shareSelectionPanelVisible}
-          items={shareItems}
-          selectedRowIds={selectedShareRowIds}
-          onToggle={handleShareSelectionToggle}
-          onInspect={handleShareSelectionInspect}
-        />
-        {shareActive && shareInSelectionStage && shareDraft?.view === "timeline" && sessionId ? (
-          <ConversationShareSelectionReopenTab onOpen={() => showShareSelectionPanel(sessionId)} />
-        ) : null}
-        {!isDraft ? (
-          <ConversationStatusPanel
-            workspacePath={workspacePath}
-            workspaceIdentity={workspaceIdentity}
-            gitSummary={gitSummary}
-            gitDirtyFileCount={gitDirtyFileCount}
-            gitWorktreeReviewSourceId={gitWorktreeReviewSourceId}
-            gitWorktreeChangeSummary={gitWorktreeChangeSummary}
-            activeTaskChangeSummary={activeTaskChangeSummary}
-            goal={selectionSideChat ? null : (snapshot?.goal ?? null)}
-            sessionPlans={state.sessionPlans}
-            plan={snapshot?.plan ?? null}
-            backgroundWorks={snapshot?.backgroundWorks ?? []}
-            runningSubagents={subagents.running}
-            workflowRuns={snapshot?.workflowRuns?.runs ?? []}
-            endedSubagentCount={subagents.endedTotal}
-            rootSessionId={rootSessionId ?? sessionId ?? undefined}
-            parentSessionId={sessionId ?? undefined}
-            layoutMode={statusPanelLayout}
-            summaryPanelVariantOverride={effectiveSummaryPanelVariantOverride}
-            onVariantChange={handleSummaryPanelVariantChange}
-            terminalSectionOpen={terminalSectionOpen}
-            onTerminalSectionOpenChange={setTerminalSectionOpen}
-            agentSectionOpen={agentSectionOpen}
-            onAgentSectionOpenChange={setAgentSectionOpen}
-            workflowSectionOpen={workflowSectionOpen}
-            onWorkflowSectionOpenChange={setWorkflowSectionOpen}
-            onRefreshGit={onRefreshGit}
-            onOpenGitReview={onOpenGitReview}
-            onPauseGoal={
-              !readOnly && !selectionSideChat && snapshot?.availability.pauseGoal.allowed
-                ? handlePauseGoal
-                : undefined
-            }
-            onResumeGoal={
-              !readOnly && !selectionSideChat && snapshot?.availability.resumeGoal.allowed
-                ? handleResumeGoal
-                : undefined
-            }
-            onOpenPlanDetail={onOpenPlanDetail ? handleOpenPlanDetail : undefined}
-            onOpenBackgroundBash={
-              onOpenBackgroundBash && sessionId
-                ? (work) =>
-                    onOpenBackgroundBash({
-                      workspacePath,
-                      workspaceIdentity: workspaceIdentity ?? undefined,
-                      remoteSessionId: remoteSessionId ?? undefined,
-                      rootSessionId: rootSessionId ?? sessionId,
-                      sessionId,
-                      workId: work.workId,
-                      title: work.title,
-                    })
-                : undefined
-            }
-            onCancelBackgroundWork={readOnly ? undefined : handleCancelBackgroundWork}
-            onOpenSubagentSession={onOpenSubagentSession ? handleOpenSubagentSession : undefined}
-            onOpenSubagentDirectory={
-              onOpenSubagentDirectory ? handleOpenSubagentDirectory : undefined
-            }
-            onOpenWorkflowRun={
-              onOpenWorkflowRun && sessionId ? handleOpenWorkflowRunFromPanel : undefined
-            }
-            endedWorkflowRunCount={endedWorkflowRunCount}
-            onOpenWorkflowRunDirectory={
-              onOpenWorkflowRunDirectory ? handleOpenWorkflowRunDirectoryFromPanel : undefined
-            }
-          />
-        ) : null}
-
-        {readOnly && controlLastError ? (
-          <div
-            role="alert"
-            data-testid="v4-subagent-readonly-error"
-            className="mx-4 mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-3 py-2 text-ui-base text-[var(--color-danger)]"
-          >
-            {controlLastError.message}
+        {effectiveDropTargetController?.active ? (
+          <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-accent/55 backdrop-blur-sm">
+            <div className="flex items-center gap-2 rounded-full border border-border bg-accent px-4 py-2 text-ui-base text-foreground shadow-sm">
+              <Hand className="size-4 text-foreground" />
+              <span>
+                {intl.formatMessage({
+                  id:
+                    effectiveDropTargetController.kind === "workspace"
+                      ? "chat.composer.workspaceFileDragHint"
+                      : "chat.attachments.dragHint",
+                })}
+              </span>
+            </div>
           </div>
         ) : null}
+        <ConversationHeader
+          title={snapshot?.meta.title ?? ""}
+          onSplitRight={onSplitRight}
+          onSplitDown={onSplitDown}
+          onClosePane={onClosePane}
+          workspaceBadge={workspaceBadge}
+          trailing={headerGenerationSpeed}
+        />
 
-        {errored ? (
-          <SessionSubscriptionErrorPanel
-            error={state.lastError ?? intl.formatMessage({ id: "chat.error.connectionLost" })}
-            sessionId={sessionId}
-            workspacePath={workspacePath}
-            onReconnect={handleRetrySubscribe}
+        <div
+          ref={conversationLayoutContainerRef}
+          className="@container/conversation relative flex min-h-0 flex-1 flex-col"
+        >
+          <ConversationShareSelectionScrim
+            visible={shareSelectionPanelVisible}
+            interactive
+            onBackdropClick={dismissShareSelectionPanel}
           />
-        ) : (
-          <SessionPluginReferenceIconBoundary
-            enabled={pluginReferenceIconsEnabled}
-            remoteSessionId={remoteSessionId}
-            sessionId={sessionId}
-            workspaceIdentity={workspaceIdentity}
-            workspacePath={workspacePath}
-          >
-            <ConversationTimeline
-              scrollToBottomActionRef={timelineScrollToBottomRef}
-              scrollToQueryActionRef={timelineScrollToQueryRef}
-              selectionPanelLayoutContainerRef={conversationLayoutContainerRef}
-              rows={timelineSnapshot?.rows.window ?? []}
-              pendingGuides={timelineSnapshot ? pendingGuideProjection?.pendingGuides : []}
-              apiRetry={timelineSnapshot?.control.apiRetry ?? null}
-              totalCount={timelineSnapshot?.rows.totalCount ?? 0}
-              sessionKey={sessionId ?? "draft"}
-              scrollMemoryKey={timelineScrollMemoryKey}
-              rowContext={rowContext}
-              onFork={forkActionsEnabled ? handleFork : undefined}
-              onRetry={retryActionsEnabled ? handleRetry : undefined}
-              onFeedbackChange={
-                !readOnly && !selectionSideChat && sessionId ? handleAssistantFeedback : undefined
-              }
-              onEdit={editActionsEnabled ? handleEdit : undefined}
-              canLoadOlder={timelineSnapshot ? hasOlderRows(timelineSnapshot) : false}
-              loadingOlder={timelineSnapshot ? state.loadingOlder : false}
-              onLoadOlder={handleLoadOlder}
-              canLoadNewer={
-                timelineSnapshot ? hasNewerRows(timelineSnapshot, state.newerCursorRowId) : false
-              }
-              loadingNewer={timelineSnapshot ? state.loadingNewer : false}
-              onLoadNewer={handleLoadNewer}
-              onLoadAllNewer={handleLoadAllNewer}
-              onLoadAllOlder={handleLoadAllOlder}
-              turnNavigatorDirectoryRevision={state.turnNavigatorDirectoryRevision}
-              bottomDock={conversationBottomDock}
-              hideTurnNavigator={shareActive && shareInSelectionStage}
-              backgroundScrollLocked={resolveConversationShareBackgroundScrollLocked({
-                partialShareActive: shareActive,
-                stage: shareDraft?.stage ?? "selection",
-                view: shareDraft?.view,
-              })}
-              headerSlot={
-                // unsupportedRowCount 也要开这个门：整份副本的行都被本 build 跳过时
-                // rows 为空，但只读块必须留下来显示「需要更新 ZCode」，不能整块消失。
-                importedShare &&
-                (importedShare.rows.length > 0 || importedShare.unsupportedRowCount > 0) ? (
-                  <ConversationShareImportNotice
-                    rows={importedShare.rows}
-                    unsupportedRowCount={importedShare.unsupportedRowCount}
-                    artifactNames={importedShareArtifactNames}
-                    artifactWorkspaceRelativePaths={importedShareArtifactWorkspaceRelativePaths}
-                    workspacePath={workspacePath}
-                    {...(workspaceIdentity ? { workspaceIdentity } : {})}
-                    {...(remoteSessionId ? { workspaceRemoteSessionId: remoteSessionId } : {})}
-                    locale={locale}
-                    theme={theme}
-                    codePreviewSettings={codePreviewSettings}
-                    onOpenShareUrl={onOpenBrowserUrl ? handleOpenImportedShareUrl : undefined}
-                    onOpenFileLink={onOpenFileLink}
-                    onOpenCodeViewer={onOpenCodeViewer}
-                  />
-                ) : null
-              }
-              emptyState={
-                isDraft ? (
-                  <div data-testid={TID_CHAT_EMPTY} className="w-full">
-                    <ConversationDraftEmptyState />
-                  </div>
-                ) : null
-              }
-              centerEmptyStateWithDock={isDraft}
-              summaryPanelLayout={statusPanelLayout}
-              conversationFindQuery={!isDraft && focused ? conversationFindQuery : ""}
-              conversationFindActiveIndex={!isDraft && focused ? conversationFindActiveIndex : -1}
-              conversationFindNavigationRequestId={
-                !isDraft && focused ? conversationFindNavigationRequestId : 0
-              }
-              onConversationFindMatchStateChange={
-                !isDraft && focused ? onConversationFindMatchStateChange : undefined
-              }
-              searchResultHighlightRequest={isDraft ? null : searchResultHighlightRequest}
-              onSearchResultHighlightDone={onSearchResultHighlightDone}
-              sessionPhase={isDraft ? undefined : snapshot?.control.phase}
-              shareSelection={
-                shareActive && shareInSelectionStage && shareDraft?.view === "timeline" && sessionId
-                  ? {
-                      eligibleRowIds: eligibleShareRowIds,
-                      selectedRowIds: selectedShareRowIds,
-                      onToggle: handleShareSelectionToggle,
-                    }
+          <ConversationShareSelectionPanel
+            visible={shareSelectionPanelVisible}
+            items={shareItems}
+            selectedRowIds={selectedShareRowIds}
+            onToggle={handleShareSelectionToggle}
+            onInspect={handleShareSelectionInspect}
+          />
+          {shareActive && shareInSelectionStage && shareDraft?.view === "timeline" && sessionId ? (
+            <ConversationShareSelectionReopenTab
+              onOpen={() => showShareSelectionPanel(sessionId)}
+            />
+          ) : null}
+          {!isDraft ? (
+            <ConversationStatusPanel
+              workspacePath={workspacePath}
+              workspaceIdentity={workspaceIdentity}
+              gitSummary={gitSummary}
+              gitDirtyFileCount={gitDirtyFileCount}
+              gitWorktreeReviewSourceId={gitWorktreeReviewSourceId}
+              gitWorktreeChangeSummary={gitWorktreeChangeSummary}
+              activeTaskChangeSummary={activeTaskChangeSummary}
+              goal={selectionSideChat ? null : (snapshot?.goal ?? null)}
+              sessionPlans={state.sessionPlans}
+              plan={snapshot?.plan ?? null}
+              backgroundWorks={snapshot?.backgroundWorks ?? []}
+              runningSubagents={subagents.running}
+              workflowRuns={snapshot?.workflowRuns?.runs ?? []}
+              endedSubagentCount={subagents.endedTotal}
+              rootSessionId={rootSessionId ?? sessionId ?? undefined}
+              parentSessionId={sessionId ?? undefined}
+              layoutMode={statusPanelLayout}
+              summaryPanelVariantOverride={effectiveSummaryPanelVariantOverride}
+              onVariantChange={handleSummaryPanelVariantChange}
+              terminalSectionOpen={terminalSectionOpen}
+              onTerminalSectionOpenChange={setTerminalSectionOpen}
+              agentSectionOpen={agentSectionOpen}
+              onAgentSectionOpenChange={setAgentSectionOpen}
+              workflowSectionOpen={workflowSectionOpen}
+              onWorkflowSectionOpenChange={setWorkflowSectionOpen}
+              onRefreshGit={onRefreshGit}
+              onOpenGitReview={onOpenGitReview}
+              onPauseGoal={
+                !readOnly && !selectionSideChat && snapshot?.availability.pauseGoal.allowed
+                  ? handlePauseGoal
                   : undefined
               }
-              selectionActions={
-                !isDraft && sessionId && !readOnly && !selectionSideChat
-                  ? {
-                      enabled: resolveConversationSelectionTooltipEnabled({
-                        selectionActionsEnabled: focused && !blockingInteractionId,
-                        partialShareActive: shareActive,
-                      }),
-                      sideActionDisabled: selectionSideActionBlocked,
-                      onAddToCurrentTask: handleAddSelectionToCurrentTask,
-                      onAskInSideChat: handleOpenSelectionSideConversation,
-                    }
+              onResumeGoal={
+                !readOnly && !selectionSideChat && snapshot?.availability.resumeGoal.allowed
+                  ? handleResumeGoal
                   : undefined
+              }
+              onOpenPlanDetail={onOpenPlanDetail ? handleOpenPlanDetail : undefined}
+              onOpenBackgroundBash={
+                onOpenBackgroundBash && sessionId
+                  ? (work) =>
+                      onOpenBackgroundBash({
+                        workspacePath,
+                        workspaceIdentity: workspaceIdentity ?? undefined,
+                        remoteSessionId: remoteSessionId ?? undefined,
+                        rootSessionId: rootSessionId ?? sessionId,
+                        sessionId,
+                        workId: work.workId,
+                        title: work.title,
+                      })
+                  : undefined
+              }
+              onCancelBackgroundWork={readOnly ? undefined : handleCancelBackgroundWork}
+              onOpenSubagentSession={onOpenSubagentSession ? handleOpenSubagentSession : undefined}
+              onOpenSubagentDirectory={
+                onOpenSubagentDirectory ? handleOpenSubagentDirectory : undefined
+              }
+              onOpenWorkflowRun={
+                onOpenWorkflowRun && sessionId ? handleOpenWorkflowRunFromPanel : undefined
+              }
+              endedWorkflowRunCount={endedWorkflowRunCount}
+              onOpenWorkflowRunDirectory={
+                onOpenWorkflowRunDirectory ? handleOpenWorkflowRunDirectoryFromPanel : undefined
               }
             />
-          </SessionPluginReferenceIconBoundary>
-        )}
+          ) : null}
+
+          {readOnly && controlLastError ? (
+            <div
+              role="alert"
+              data-testid="v4-subagent-readonly-error"
+              className="mx-4 mt-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-3 py-2 text-ui-base text-[var(--color-danger)]"
+            >
+              {controlLastError.message}
+            </div>
+          ) : null}
+
+          {errored ? (
+            <SessionSubscriptionErrorPanel
+              error={state.lastError ?? intl.formatMessage({ id: "chat.error.connectionLost" })}
+              sessionId={sessionId}
+              workspacePath={workspacePath}
+              onReconnect={handleRetrySubscribe}
+            />
+          ) : (
+            <SessionPluginReferenceIconBoundary
+              enabled={pluginReferenceIconsEnabled}
+              remoteSessionId={remoteSessionId}
+              sessionId={sessionId}
+              workspaceIdentity={workspaceIdentity}
+              workspacePath={workspacePath}
+            >
+              <ConversationTimeline
+                scrollToBottomActionRef={timelineScrollToBottomRef}
+                scrollToQueryActionRef={timelineScrollToQueryRef}
+                selectionPanelLayoutContainerRef={conversationLayoutContainerRef}
+                rows={timelineSnapshot?.rows.window ?? []}
+                pendingGuides={timelineSnapshot ? pendingGuideProjection?.pendingGuides : []}
+                apiRetry={timelineSnapshot?.control.apiRetry ?? null}
+                totalCount={timelineSnapshot?.rows.totalCount ?? 0}
+                sessionKey={sessionId ?? "draft"}
+                scrollMemoryKey={timelineScrollMemoryKey}
+                rowContext={rowContext}
+                onFork={forkActionsEnabled ? handleFork : undefined}
+                onRetry={retryActionsEnabled ? handleRetry : undefined}
+                onFeedbackChange={
+                  !readOnly && !selectionSideChat && sessionId ? handleAssistantFeedback : undefined
+                }
+                onEdit={editActionsEnabled ? handleEdit : undefined}
+                canLoadOlder={timelineSnapshot ? hasOlderRows(timelineSnapshot) : false}
+                loadingOlder={timelineSnapshot ? state.loadingOlder : false}
+                onLoadOlder={handleLoadOlder}
+                canLoadNewer={
+                  timelineSnapshot ? hasNewerRows(timelineSnapshot, state.newerCursorRowId) : false
+                }
+                loadingNewer={timelineSnapshot ? state.loadingNewer : false}
+                onLoadNewer={handleLoadNewer}
+                onLoadAllNewer={handleLoadAllNewer}
+                onLoadAllOlder={handleLoadAllOlder}
+                turnNavigatorDirectoryRevision={state.turnNavigatorDirectoryRevision}
+                bottomDock={conversationBottomDock}
+                hideTurnNavigator={shareActive && shareInSelectionStage}
+                backgroundScrollLocked={resolveConversationShareBackgroundScrollLocked({
+                  partialShareActive: shareActive,
+                  stage: shareDraft?.stage ?? "selection",
+                  view: shareDraft?.view,
+                })}
+                headerSlot={
+                  // unsupportedRowCount 也要开这个门：整份副本的行都被本 build 跳过时
+                  // rows 为空，但只读块必须留下来显示「需要更新 ZCode」，不能整块消失。
+                  importedShare &&
+                  (importedShare.rows.length > 0 || importedShare.unsupportedRowCount > 0) ? (
+                    <ConversationShareImportNotice
+                      rows={importedShare.rows}
+                      unsupportedRowCount={importedShare.unsupportedRowCount}
+                      artifactNames={importedShareArtifactNames}
+                      artifactWorkspaceRelativePaths={importedShareArtifactWorkspaceRelativePaths}
+                      workspacePath={workspacePath}
+                      {...(workspaceIdentity ? { workspaceIdentity } : {})}
+                      {...(remoteSessionId ? { workspaceRemoteSessionId: remoteSessionId } : {})}
+                      locale={locale}
+                      theme={theme}
+                      codePreviewSettings={codePreviewSettings}
+                      onOpenShareUrl={onOpenBrowserUrl ? handleOpenImportedShareUrl : undefined}
+                      onOpenFileLink={onOpenFileLink}
+                      onOpenCodeViewer={onOpenCodeViewer}
+                    />
+                  ) : null
+                }
+                emptyState={
+                  isDraft ? (
+                    <div data-testid={TID_CHAT_EMPTY} className="w-full">
+                      <ConversationDraftEmptyState />
+                    </div>
+                  ) : null
+                }
+                centerEmptyStateWithDock={isDraft}
+                summaryPanelLayout={statusPanelLayout}
+                conversationFindQuery={!isDraft && focused ? conversationFindQuery : ""}
+                conversationFindActiveIndex={!isDraft && focused ? conversationFindActiveIndex : -1}
+                conversationFindNavigationRequestId={
+                  !isDraft && focused ? conversationFindNavigationRequestId : 0
+                }
+                onConversationFindMatchStateChange={
+                  !isDraft && focused ? onConversationFindMatchStateChange : undefined
+                }
+                searchResultHighlightRequest={isDraft ? null : searchResultHighlightRequest}
+                onSearchResultHighlightDone={onSearchResultHighlightDone}
+                sessionPhase={isDraft ? undefined : snapshot?.control.phase}
+                shareSelection={
+                  shareActive &&
+                  shareInSelectionStage &&
+                  shareDraft?.view === "timeline" &&
+                  sessionId
+                    ? {
+                        eligibleRowIds: eligibleShareRowIds,
+                        selectedRowIds: selectedShareRowIds,
+                        onToggle: handleShareSelectionToggle,
+                      }
+                    : undefined
+                }
+                selectionActions={
+                  !isDraft && sessionId && !readOnly && !selectionSideChat
+                    ? {
+                        enabled: resolveConversationSelectionTooltipEnabled({
+                          selectionActionsEnabled: focused && !blockingInteractionId,
+                          partialShareActive: shareActive,
+                        }),
+                        sideActionDisabled: selectionSideActionBlocked,
+                        onAddToCurrentTask: handleAddSelectionToCurrentTask,
+                        onAskInSideChat: handleOpenSelectionSideConversation,
+                      }
+                    : undefined
+                }
+              />
+            </SessionPluginReferenceIconBoundary>
+          )}
+        </div>
       </div>
-    </div>
+    </PluginUiSessionProvider>
   );
 }

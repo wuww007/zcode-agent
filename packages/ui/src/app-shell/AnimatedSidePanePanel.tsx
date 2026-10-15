@@ -45,6 +45,7 @@ import { SubagentDirectorySidePane } from "@/app-shell/SubagentDirectorySidePane
 import { SelectionSideChatPane } from "@/app-shell/SelectionSideChatPane.js";
 import { BackgroundBashOutputSidePane } from "@/app-shell/BackgroundBashOutputSidePane.js";
 import { PlanDetailSidePane } from "@/app-shell/PlanDetailSidePane.js";
+import { PluginUiSidePane } from "@/plugin-ui/index.js";
 import { WorkflowRunSidePane } from "@/app-shell/WorkflowRunSidePane.js";
 import { WorkflowRunDirectorySidePane } from "@/app-shell/WorkflowRunDirectorySidePane.js";
 import { WorkflowActorSessionSidePane } from "@/app-shell/WorkflowActorSessionSidePane.js";
@@ -1127,6 +1128,12 @@ export function AnimatedSidePanePanel({
                             onOpenCodeViewer={onOpenCodeViewer}
                             onOpenFileLink={onOpenFileLink}
                             onUnavailable={onCloseTab}
+                          />
+                        ) : tab.type === "plugin-ui" ? (
+                          <PluginUiSidePane
+                            tab={tab}
+                            onOpenBrowserUrl={onOpenBrowserUrl}
+                            onCloseTab={onCloseTab}
                           />
                         ) : tab.type === "plan-detail" ? (
                           <PlanDetailSidePane

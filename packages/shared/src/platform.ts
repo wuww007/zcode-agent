@@ -5,6 +5,7 @@ import type {
   SSHConnectOptions,
   WSLConnectOptions,
 } from "./remoteTarget.js";
+import type { PluginSandboxPlatformPort } from "./mcp-apps/contract.js";
 import type {
   LoadCliMcpFromUserDirectoryRequest,
   LoadCliMcpFromUserDirectoryResult,
@@ -255,6 +256,27 @@ export interface CreateTempTextAttachmentResult {
   localPath: string;
   mimeType: "text/plain";
   sizeBytes: number;
+}
+
+/**
+ * dwf 产物「作为文件打开」：把某一版产物的字节落成宿主本机上的一份副本
+ * （docs/dynamic-workflow/authoring.md「How the user sees them」）。
+ *
+ * ⚠ 术语：artifact = 脚本经 `artifact.*` 发布给用户看的产出，不是引擎的 `RunSettlement.artifact`。
+ */
+export interface MaterializeWorkflowArtifactFileRequest {
+  runId: string;
+  artifactId: string;
+  /** 这份字节属于哪一版；副本按版本分目录，一版一份。 */
+  version: number;
+  /** 期望的文件名（含扩展名，扩展名决定系统用哪个 App 打开）；宿主会再清洗一次。 */
+  fileName: string;
+  bytes: Uint8Array;
+}
+
+export interface MaterializeWorkflowArtifactFileResult {
+  /** 副本在宿主本机上的绝对路径。 */
+  localPath: string;
 }
 
 export type SaveFileRequest =
@@ -583,6 +605,12 @@ export interface IPlatformService {
   /** 当前平台的文件选择框是否能返回 agent 可访问的本地绝对路径 */
   canSelectFilePath?: boolean;
 
+  /**
+   * 插件 UI 沙箱平台端口。只有桌面端实现；
+   * web / 手机远控为 undefined，plugin-ui 据此回退到普通 MCP 工具卡片。
+   */
+  pluginSandbox?: PluginSandboxPlatformPort;
+
   /** 打开系统目录选择框，返回选中路径或 null */
   selectDirectory(): Promise<string | null>;
 
@@ -617,6 +645,14 @@ export interface IPlatformService {
   createTempTextAttachment?(
     payload: CreateTempTextAttachmentRequest,
   ): Promise<CreateTempTextAttachmentResult>;
+
+  /**
+   * 把 dwf 产物某一版的字节写成宿主本机上的一份副本（只在路径为空时写），返回其路径。
+   * 仅 Desktop 实现：手机远控与普通 Web 端没有「用本机 App 打开文件」的能力，缺席即不出入口。
+   */
+  materializeWorkflowArtifactFile?(
+    payload: MaterializeWorkflowArtifactFileRequest,
+  ): Promise<MaterializeWorkflowArtifactFileResult>;
 
   /** 订阅当前窗口内远程连接过程日志，返回 disposer */
   onRemoteConnectionLog(handler: (entry: RemoteConnectionRuntimeLog) => void): () => void;

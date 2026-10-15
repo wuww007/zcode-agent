@@ -28,6 +28,7 @@ import { registerHostServiceResourceTelemetry } from "./hostServiceResourceTelem
 import { resolveResourceTelemetryEnvironmentKey } from "./hostResourceTelemetryEnvironment.js";
 import { reportHostSessionCreate } from "./hostSessionCreateTelemetry.js";
 import { createBrowserControlMainBridge } from "./browserControlMainBridge.js";
+import { createPluginSandboxRegistrationBridge } from "./pluginSandbox/index.js";
 import { materializeBrowserRecordingArtifact } from "./browserRecordingArtifactMaterializer.js";
 import {
   ServiceCollection,
@@ -230,6 +231,14 @@ function authorizeLocalMediaPreviewPath(path: string): Promise<string> {
 
 // browser-use host↔main 桥：把 agent 的 browser 命令经 parentPort 转给 main（WebContentsView+CDP）。
 // parentPort 为空（不应发生于 host 进程）时 postToMain 抛错，bridge 自身返回 backend_unavailable。
+const pluginSandboxRegistrationBridge = createPluginSandboxRegistrationBridge({
+  send: (message) => {
+    if (!parentPort) {
+      throw new Error("parentPort unavailable");
+    }
+    parentPort.postMessage(message);
+  },
+});
 const browserControlMainBridge = createBrowserControlMainBridge({
   postToMain: (message) => {
     if (!parentPort) {
@@ -2140,6 +2149,7 @@ async function disposeHostResources(reason: string): Promise<HostShutdownResult>
 
   disposeHostResourcesInFlight = (async () => {
     logger.info(`disposing host resources, reason=${reason}`);
+    pluginSandboxRegistrationBridge.dispose();
 
     stopHostNetworkTelemetry();
     hostSelfResourceTelemetry.stop();
@@ -2345,6 +2355,9 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
     return;
   }
 
+  if (msg.type === HostMessageTypes.PluginSandboxRegisterResult) {
+    pluginSandboxRegistrationBridge.accept(msg);
+  }
   if (msg.type === HostMessageTypes.LocalMediaPreviewPathAuthorizeResult) {
     const pending = pendingLocalMediaPreviewPathAuthorizations.get(msg.requestId);
     if (!pending) return;
@@ -2840,6 +2853,7 @@ parentPort.on("message", async (e: Electron.MessageEvent) => {
               settingService,
               prepareLegacyAccountConnections,
               hostApiNetworkTransport,
+              registerPluginSandbox: pluginSandboxRegistrationBridge.register,
               authorizeLocalMediaPreviewPath,
               runtimeProcessEnvPatch: msg.runtimeProcessEnvPatch,
               agentRuntimeContext: {

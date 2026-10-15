@@ -8,6 +8,7 @@
 // header 键整键替换、条目整条替换，没有任何字段级深合并。规则在 workflow-runs-delta.ts。
 import { z } from "zod";
 import { streamablePathSchema } from "./core.js";
+import { mcpAppInstanceSchema } from "../mcp-apps/instance.js";
 import { conversationRowSchema } from "./rows.js";
 import { sharedContextImportStateSchema } from "./shared-context-import.js";
 import {
@@ -36,6 +37,14 @@ import {
 } from "./workflow-runs.js";
 
 // StatePatch：键级整体替换（Object.assign），键集合封闭。键内绝不深合并。
+export const pluginUiResourceSubscriberSchema = z
+  .object({
+    scopeId: z.string(),
+    generation: z.number().int().nonnegative(),
+    instance: mcpAppInstanceSchema,
+  })
+  .strict();
+
 export const statePatchSchema = z.object({
   revision: z.number().optional(),
   control: sessionControlSchema.optional(),
@@ -106,6 +115,38 @@ export const conversationDeltaSchema = z.discriminatedUnion("op", [
     append: z.string(),
   }),
   z.object({ op: z.literal("state.updated"), patch: statePatchSchema }),
+  // 插件 UI 订阅的 MCP 资源通知。live-only：不改快照（apply 为 no-op）、不进冷恢复；
+  // renderer 按 subscribers 派发给对应沙箱实例。
+  z.object({
+    op: z.literal("pluginUi.resourceUpdated"),
+    pluginId: z.string(),
+    serverName: z.string(),
+    uri: z.string(),
+    subscribers: z.array(pluginUiResourceSubscriberSchema),
+  }),
+  z.object({
+    op: z.literal("pluginUi.resourceListChanged"),
+    pluginId: z.string(),
+    serverName: z.string(),
+    subscribers: z.array(pluginUiResourceSubscriberSchema),
+  }),
+  z.object({
+    op: z.literal("pluginUi.instanceClosed"),
+    pluginId: z.string(),
+    serverName: z.string(),
+    subscribers: z.array(pluginUiResourceSubscriberSchema),
+  }),
+  z.object({
+    op: z.literal("pluginUi.appToolCall"),
+    activity: z.boolean().optional(),
+    cancelled: z.boolean().optional(),
+    pluginId: z.string(),
+    serverName: z.string(),
+    subscribers: z.array(pluginUiResourceSubscriberSchema),
+    callId: z.string(),
+    toolName: z.string(),
+    arguments: z.record(z.string(), z.unknown()),
+  }),
   /**
    * 一条 dwf run 的键级增量。`revision` 是**这次变化之后**的 `workflowRuns.revision`（绝对值）；
    * 一条引擎事件最多产生一条本 op（节点相位、派生的 actor 状态、用量、水位一起落地，原子）。
@@ -143,5 +184,15 @@ export const conversationDeltaSchema = z.discriminatedUnion("op", [
   }),
 ]);
 export type ConversationDelta = z.infer<typeof conversationDeltaSchema>;
+export type PluginUiResourceDelta = Extract<
+  ConversationDelta,
+  { op: "pluginUi.resourceUpdated" | "pluginUi.resourceListChanged" }
+>;
+export type PluginUiAppToolCallDelta = Extract<ConversationDelta, { op: "pluginUi.appToolCall" }>;
+/** 按沙箱实例投递的全部 live-only 增量。 */
+export type PluginUiInstanceDelta =
+  | Extract<ConversationDelta, { op: "pluginUi.instanceClosed" }>
+  | PluginUiResourceDelta
+  | PluginUiAppToolCallDelta;
 export type WorkflowRunUpdatedDelta = Extract<ConversationDelta, { op: "workflowRun.updated" }>;
 export type WorkflowRunRemovedDelta = Extract<ConversationDelta, { op: "workflowRun.removed" }>;

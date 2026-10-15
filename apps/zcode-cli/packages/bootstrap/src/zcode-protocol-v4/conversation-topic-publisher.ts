@@ -741,6 +741,14 @@ export class ConversationTopicPublisher {
         const wireDeltas = deltas.filter((delta) => {
           if (delta.op === "state.updated" || delta.op === "row.appended") return true;
           if (delta.op === "row.removed") return false;
+          // 4b-2：插件资源通知只走实时增量，不进冷启动测量。
+          if (
+            delta.op === "pluginUi.resourceUpdated" ||
+            delta.op === "pluginUi.resourceListChanged" ||
+            delta.op === "pluginUi.appToolCall" ||
+            delta.op === "pluginUi.instanceClosed"
+          )
+            return false;
           // 键级增量作用在状态键上，不在 60 行 wire tail 里——没有「已滑出窗口所以不计」这一说，
           // 与 state.updated 同规一律计入。
           if (delta.op === "workflowRun.updated" || delta.op === "workflowRun.removed") return true;

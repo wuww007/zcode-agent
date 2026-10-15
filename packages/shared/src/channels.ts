@@ -139,6 +139,10 @@ export const ServiceChannels = {
   Plugins: "plugins",
   /** 设置页插件管理服务（UI 平台能力面收敛，不再直触 zcodeAgentService） */
   PluginManagement: "plugin-management",
+  /** 插件 UI 沙箱桥：host 读取 ui:// 资源并向 main 登记、代理 UI 发起的工具调用 */
+  PluginUiBridge: "plugin-ui-bridge",
+  PluginUiSampling: "plugin-ui-sampling",
+  PluginUiAppTools: "plugin-ui-app-tools",
   /** Subagents 管理服务 */
   Subagents: "subagents",
   /** Commands 管理服务 */
@@ -525,6 +529,15 @@ export interface CodingPlanWebviewLangChangeDetail {
 // ============================================================================
 // 内部传输频道 —— 框架级别的通信
 // ============================================================================
+/**
+ * 插件 UI 沙箱 guest（partition=plugin-sandbox:<id>）的 main → guest preload 频道。
+ * preload 只把 MessagePort 组经 window.postMessage 转交给受信 shell，不暴露任何 contextBridge API。
+ */
+export const PluginSandboxChannels = {
+  /** main → guest：{ sandboxId, initId, names } + port1[]，shell 据此建立宿主端口 */
+  Init: "zcode:plugin-sandbox-init",
+} as const;
+
 /** 内部传输频道。用于 MessagePort 转发等框架级通信。 */
 export const InternalChannels = {
   DatabaseStartupState: "zcode:database-startup-state",
@@ -533,6 +546,8 @@ export const InternalChannels = {
   ServicePort: "zcode:service-port",
   /** main → renderer 转发窗口 Host 的 scoped MessagePort */
   ScopedServicePort: "zcode:scoped-service-port",
+  /** main → 宿主 renderer：插件 UI 沙箱的 MessagePort 组（port2[]），payload { sandboxId, initId, names } */
+  PluginSandboxPorts: "zcode:plugin-sandbox-ports",
   /** renderer → main：scoped MessagePort 已注册，可安全切换 attachment */
   ScopedServicePortReady: "zcode:scoped-service-port-ready",
   /** preload → renderer：主进程已确认系统通知展示，renderer 可播放提示音 */
@@ -608,6 +623,8 @@ export const HostMessageTypes = {
   /** main → host：资源管理器请求 Host 采样其后代进程（Agent / MCP / 终端）的 CPU 与内存 */
   ResourceUsageSnapshotRequest: "resource-usage-snapshot-request",
   ResourceUsageSnapshotCancel: "resource-usage-snapshot-cancel",
+  /** main → host：插件 UI 沙箱登记结果（PluginSandboxRegisterResultPayload） */
+  PluginSandboxRegisterResult: "plugin-sandbox-register-result",
 } as const;
 
 /** host process → main process 的反馈消息类型 */
@@ -704,6 +721,8 @@ export const HostResponseTypes = {
   ProviderProvisioningSourceChanged: "provider-provisioning-source-changed",
   /** host → main：一次 Remote Environment 同步执行完毕。 */
   ProviderProvisioningExecutionResult: "provider-provisioning-execution-result",
+  /** host → main：登记已校验的插件 UI HTML 与 CSP，换取 sandbox 句柄（PluginSandboxRegisterRequestPayload） */
+  PluginSandboxRegisterRequest: "plugin-sandbox-register-request",
 } as const;
 
 // ============================================================================

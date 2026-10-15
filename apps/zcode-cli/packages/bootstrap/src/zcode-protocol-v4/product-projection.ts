@@ -22,6 +22,9 @@ import type {
   ModelStreamingPayload,
   ModelUsage,
   PermissionDeniedPayload,
+  PluginUiAppToolCallRequestedPayload,
+  PluginUiResourceListChangedPayload,
+  PluginUiResourceUpdatedPayload,
   PermissionRequestedPayload,
   PermissionResolvedPayload,
   SessionEvent,
@@ -1377,6 +1380,51 @@ export class ProductProjection {
         return this.onPermissionResolved(event);
       case SessionEventType.PermissionDenied:
         return this.onPermissionDenied(event);
+      case SessionEventType.PluginUiResourceUpdated: {
+        // live-only，不改快照；renderer 按 subscribers 派发给沙箱实例。
+        const payload = event.payload as PluginUiResourceUpdatedPayload;
+        return [
+          {
+            op: "pluginUi.resourceUpdated",
+            pluginId: payload.pluginId,
+            serverName: payload.serverName,
+            uri: payload.uri,
+            subscribers: payload.subscribers,
+          },
+        ];
+      }
+      case SessionEventType.PluginUiResourceListChanged: {
+        const payload = event.payload as PluginUiResourceListChangedPayload;
+        return [
+          {
+            op: "pluginUi.resourceListChanged",
+            pluginId: payload.pluginId,
+            serverName: payload.serverName,
+            subscribers: payload.subscribers,
+          },
+        ];
+      }
+      case SessionEventType.PluginUiInstanceClosed: {
+        const payload = event.payload as PluginUiResourceListChangedPayload;
+        return [{ op: "pluginUi.instanceClosed", ...payload }];
+      }
+      case SessionEventType.PluginUiAppToolCallRequested: {
+        // App-Provided Tools 信箱：live-only，投递给 subscribers 里唯一的实例。
+        const payload = event.payload as PluginUiAppToolCallRequestedPayload;
+        return [
+          {
+            op: "pluginUi.appToolCall",
+            activity: payload.activity,
+            ...(payload.cancelled ? { cancelled: true } : {}),
+            pluginId: payload.pluginId,
+            serverName: payload.serverName,
+            subscribers: payload.subscribers,
+            callId: payload.callId,
+            toolName: payload.toolName,
+            arguments: payload.arguments,
+          },
+        ];
+      }
       case SessionEventType.UserInputAutoResolutionUpdated:
         return this.onUserInputAutoResolutionUpdated(event);
       case SessionEventType.WorkspaceHookReviewRequested:
@@ -3919,6 +3967,10 @@ export class ProductProjection {
             return true;
           }
           break;
+        case "pluginUi.resourceUpdated":
+        case "pluginUi.resourceListChanged":
+        case "pluginUi.instanceClosed":
+        case "pluginUi.appToolCall":
         // 非行 op：只动 workflowRuns 状态键，与 subagent 行投影的输入没有交集。
         case "workflowRun.updated":
         case "workflowRun.removed":
@@ -4087,6 +4139,12 @@ export class ProductProjection {
           break;
         case "row.removed":
           if (prospective.rowId >= delta.fromRowId) prospective = null;
+          break;
+        case "pluginUi.resourceUpdated":
+        case "pluginUi.resourceListChanged":
+        case "pluginUi.instanceClosed":
+        case "pluginUi.appToolCall":
+        // 非行 op：改不了这一行的 prospective 形态。
           break;
         default: {
           const exhaustiveDelta: never = delta;

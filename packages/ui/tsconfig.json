@@ -19,6 +19,7 @@
   // 同时纳入 src 下的 .json（如 assets 下的 provider-icons 数据），让 resolveJsonModule 导入能被工程文件列表收录。
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "src/**/*.json"],
   // ui 里也直接用了 rpc 的类型；补上工程引用后，ui 不会再把 rpc 源码当成自己的输入重新检查。
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.test.tsx"],
   "references": [
     { "path": "../provider" },
     { "path": "../shared" },

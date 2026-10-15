@@ -11,6 +11,7 @@ import {
   MapIcon,
   MessageSquareTextIcon,
   ListTreeIcon,
+  PlugIcon,
   NotepadTextIcon,
   PackageIcon,
   PaletteIcon,
@@ -340,6 +341,10 @@ export function SidePaneTabIcon({ tab }: { tab: WorkspaceSidePaneTab }) {
     return <BrowserUseTabIcon tab={tab} />;
   }
 
+  if (tab.type === "plugin-ui") {
+    return <PlugIcon className="size-3.5" />;
+  }
+
   if (tab.source.type === "patch") {
     const fileDisplayTarget = getPatchFileDisplayTarget(tab.source);
     if (fileDisplayTarget) {
@@ -545,6 +550,10 @@ export function getSidePaneTabTitle(
   // 用页面标题（agent 导航后由 getState 回填），缺省复用 browser.title 文案。
   if (tab.type === "browser-use") {
     return tab.title?.trim() || formatMessage({ id: "browser.title" });
+  }
+
+  if (tab.type === "plugin-ui") {
+    return tab.title.trim() || formatMessage({ id: "sidePane.pluginUi" });
   }
 
   return tab.source.title || formatMessage({ id: "codeViewer.title" });

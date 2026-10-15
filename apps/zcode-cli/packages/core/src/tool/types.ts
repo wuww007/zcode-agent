@@ -93,8 +93,12 @@ export interface ToolMetadata {
     serverName: string;
     toolName: string;
     description?: string;
+    /** 该 server 所属插件的稳定 id；非插件 MCP 为空。 */
+    pluginId?: string;
     /** 来自声明 zcode_official 鉴权的 MCP server；仅用于信任其结果里的结构化标识。 */
     official?: boolean;
+    /** 工具 `_meta` 归一化后的 MCP App 描述；存在即 UI 投影 display.ui。 */
+    ui?: import("@zcode/shared/mcp-apps").McpToolUiDescriptor;
   };
 }
 
@@ -279,6 +283,8 @@ export type ToolHandler<TInput = unknown, TOutput = unknown> = (
 // -----------------------------------------------
 
 export interface ToolEntry extends ToolContractDeclaration {
+  /** 宿主资源在审批之前固定归属；所有返回路径均释放，撤销信号进入现有取消链。 */
+  retainExecution?: (callId: string) => { signal: AbortSignal; release(): void };
   aliases?: readonly string[];
   /**
    * Host-issued atomicity policy for model content. Only an authority-verified

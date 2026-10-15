@@ -14,7 +14,7 @@ import {
 } from "@zcode/shared";
 import type { SqliteSessionStore } from "@zcode/adapters/storage";
 import { traceContextToLogContext, createRootTraceContext } from "@zcode/contracts";
-import type { McpPort, ModelSelection } from "@zcode/contracts";
+import type { McpNotificationPort, McpPort, ModelSelection } from "@zcode/contracts";
 import type { PresentationSurface } from "@zcode/core";
 import type { RunZCodeProtocolAgentOptions, ZCodeAppOptions } from "./app/types.js";
 import { createZCodeApp } from "./app/create-app.js";
@@ -224,6 +224,10 @@ export async function runZCodeProtocolAgent(
         resolveZCodeApiOrigin,
       }),
     };
+    // MCP server 通知延迟绑定到协议 server（server 晚于 pool 创建，端口取闭包引用）。
+    let notificationServer: {
+      handleMcpNotification: McpNotificationPort["onNotification"];
+    } | null = null;
     mcpConnectionPool =
       configResult.config.features.mcp === false
         ? undefined
@@ -239,6 +243,9 @@ export async function runZCodeProtocolAgent(
             officialMcpAuth,
             telemetry: mcpTelemetryTracker,
             workingDirectory: options.cwd,
+            notifications: {
+              onNotification: (notification) => notificationServer?.handleMcpNotification(notification),
+            },
           });
     mcpPort = mcpConnectionPool?.acquireLease({ leaseId: "protocol-settings" });
     const activeProviderRegistryRuntime = providerRegistryRuntime;
@@ -318,6 +325,8 @@ export async function runZCodeProtocolAgent(
       takePostResponseBatch: (requestId) => server.takePostResponseBatch(requestId),
     });
     server.setNotificationSink((notification) => connection.send(notification));
+    // pool 先于 server 建立；server 就绪后把 MCP server 通知接到它的路由上。
+    notificationServer = server;
     mcpResourceSink = (samples) =>
       connection.send({
         method: zcodeProtocolNotifications.mcpResourceSamples,

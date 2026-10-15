@@ -308,4 +308,37 @@ export type {
   FeedbackTicketSummary,
   FeedbackTicketType,
 } from "@zcode/shared";
+export {
+  createPluginUiAppToolsService,
+  createPluginUiBridgeService,
+  createPluginUiSamplingService,
+  IPluginUiSamplingService,
+  type PluginUiSamplingParams,
+  type PluginUiCancelSamplingParams,
+  PluginUiBridgeError,
+  IPluginUiAppToolsService,
+  type PluginUiAppToolInstanceParams,
+  type PluginUiAppToolCallParams,
+  type PluginUiAppToolAcceptedResult,
+  type PluginUiRegisterAppToolsParams,
+  type PluginUiRegisterAppToolsResult,
+  type PluginUiResolveAppToolCallParams,
+} from "./plugin-ui-bridge/index.js";
+export {
+  IPluginUiBridgeService,
+  type PluginUiCallToolParams,
+  type PluginUiCallToolResult,
+  type PluginUiPrepareSandboxParams,
+  type PluginUiReadResourceParams,
+  type PluginUiReadResourceResult,
+  type PluginUiPluginScope,
+  type PluginUiListResourcesParams,
+  type PluginUiListResourcesResult,
+  type PluginUiListResourceTemplatesResult,
+  type PluginUiResourceSubscriptionParams,
+  type PluginUiSurfaceEntry,
+  type PluginUiWorkspaceTarget,
+} from "./plugin-ui-bridge/contract.js";
+export { IGenUiService } from "./gen-ui/contract.js";
+export type { GenUiPrepareParams } from "./gen-ui/contract.js";
 export { IClientConfigService } from "./client-config/clientConfig.js";
