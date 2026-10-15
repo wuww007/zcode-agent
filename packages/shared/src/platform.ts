@@ -13,6 +13,15 @@ import type {
   SaveCliMcpToUserDirectoryRequest,
 } from "./mcp.js";
 import type { OAuthStateRegistration } from "./oauth.js";
+import type {
+  WebRemoteControlContext,
+  WebRemoteControlReconnectWorkspaceRequest,
+  WebRemoteControlReconnectWorkspaceResult,
+  WebRemoteControlStartOperationResult,
+  WebRemoteControlStatus,
+  WebRemoteControlTaskTarget,
+  WebRemoteControlWorkspaceTarget,
+} from "./web-remote-control.js";
 import type { AppSettings, Locale } from "./protocol.js";
 import type { ArmsCustomEventPayload, RendererTelemetryEventPayload } from "./telemetry.js";
 import type {
@@ -642,6 +651,25 @@ export interface IPlatformService {
     context: BindRemoteWorkspaceSessionContextRequest,
   ): Promise<void>;
 
+  /** 为当前 workspace 开启 Web 远程控制能力 */
+  startWebRemoteControl(
+    context: WebRemoteControlContext,
+  ): Promise<WebRemoteControlStartOperationResult>;
+
+  /** 清除旧配对材料并重新生成 Web 远程控制二维码 */
+  refreshWebRemoteControlPairing(
+    context: WebRemoteControlContext,
+  ): Promise<WebRemoteControlStartOperationResult>;
+
+  /** 关闭当前窗口已开启的 Web 远程控制能力 */
+  stopWebRemoteControl(): Promise<void>;
+
+  /** 查询当前窗口 Web 远程控制状态 */
+  getWebRemoteControlStatus(): Promise<WebRemoteControlStatus>;
+
+  /** 订阅当前窗口 Web 远程控制状态变化；旧平台可不实现，UI 会保留轮询兜底 */
+  onWebRemoteControlStatusChanged?(handler: (status: WebRemoteControlStatus) => void): () => void;
+
   /** 释放当前窗口里已创建的远程 session */
   disposeRemoteSession(sessionId: string): Promise<void>;
 
@@ -764,6 +792,19 @@ export interface IPlatformService {
 
   /** 同步当前窗口所有 tab 的 workspace 路径到 main 进程（用于跨窗口去重） */
   syncWindowTabs(paths: string[]): void;
+
+  /** 同步当前窗口里 Web 远程控制允许切换的 workspace；Web fallback 可忽略 */
+  syncWebRemoteControlWorkspaces?(workspaces: WebRemoteControlWorkspaceTarget[]): void;
+
+  /** 同步当前窗口里 Web 远程控制可展示的 task 快照；Web fallback 可忽略 */
+  syncWebRemoteControlTasks?(tasks: WebRemoteControlTaskTarget[]): void;
+
+  /** 注册 Web 远程控制手机端请求重连 workspace 的回调，返回 disposer */
+  onWebRemoteControlReconnectWorkspace?(
+    handler: (
+      request: WebRemoteControlReconnectWorkspaceRequest,
+    ) => Promise<WebRemoteControlReconnectWorkspaceResult>,
+  ): () => void;
 
   /** 同步当前窗口的未读 task 数给宿主环境，用于 Dock / 任务栏徽标聚合 */
   syncWindowUnreadCount(count: number): void;

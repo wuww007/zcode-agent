@@ -1,6 +1,56 @@
 import type { ZCodeEnv } from "./env.js";
 
 export const DEFAULT_ZCODE_ENDPOINT_ORIGIN = "https://zcode.z.ai";
+
+// Web Remote Control（手机远控）：relay 默认地址与 v4 页面的最低 app 版本门槛。
+export const DEFAULT_WEB_REMOTE_CONTROL_RELAY_WS_URL = "wss://zcode.z.ai/ws";
+export const WEB_REMOTE_CONTROL_V4_MIN_APP_VERSION = "3.4.0";
+
+export interface BuildZCodeEndpointUrlsOptions {
+  appVersion?: string;
+}
+
+function isWebRemoteControlV4AppVersion(appVersion: string | undefined): boolean {
+  if (!appVersion) {
+    return false;
+  }
+
+  // zcodeEndpoint 会被 Vite 配置在 Node 加载期直接导入，不能依赖源码态 `.js` runtime import。
+  // 这里只比较固定的稳定版门槛；高于 3.4.0 的预发布版本仍满足门槛，3.4.0 自身的预发布版本不满足。
+  const normalizedVersion = appVersion.trim().replace(/^v/i, "");
+  const match = normalizedVersion.match(
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([^+]+))?(?:\+(.+))?$/,
+  );
+  if (!match) {
+    return false;
+  }
+
+  const prereleaseIdentifiers = match[4]?.split(".");
+  const hasValidPrerelease =
+    prereleaseIdentifiers === undefined ||
+    prereleaseIdentifiers.every(
+      (identifier) =>
+        /^[0-9A-Za-z-]+$/.test(identifier) &&
+        (!/^\d+$/.test(identifier) || /^(0|[1-9]\d*)$/.test(identifier)),
+    );
+  const buildIdentifiers = match[5]?.split(".");
+  const hasValidBuild =
+    buildIdentifiers === undefined ||
+    buildIdentifiers.every((identifier) => /^[0-9A-Za-z-]+$/.test(identifier));
+  if (!hasValidPrerelease || !hasValidBuild) {
+    return false;
+  }
+
+  const versionParts = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const floorParts = WEB_REMOTE_CONTROL_V4_MIN_APP_VERSION.split(".").map(Number);
+  for (let index = 0; index < floorParts.length; index += 1) {
+    if (versionParts[index]! !== floorParts[index]!) {
+      return versionParts[index]! > floorParts[index]!;
+    }
+  }
+
+  return prereleaseIdentifiers === undefined;
+}
 export const DEFAULT_BIGMODEL_API_ORIGIN = "https://bigmodel.cn";
 export const DEFAULT_ZAI_OAUTH_ORIGIN = "https://chat.z.ai";
 export const DEFAULT_ZAI_BUSINESS_BASE_URL = "https://api.z.ai";
@@ -34,7 +84,12 @@ export function readProductEndpointEnv(): Record<string, string | undefined> {
 export interface ZCodeEndpointUrls {
   origin: string;
   apiBaseUrl: string;
+  /** 手机远控页面地址（版本路由 v3/v4 由 appVersion 决定）。 */
+  remoteUrl: string;
+  webRemoteCallbackUrl: string;
   webShareCallbackUrl: string;
+  /** 桌面注册为 relay 设备的 WebSocket 端点。 */
+  relayWsUrl: string;
   zcodePlanOpenAiBaseUrl: string;
   zcodePlanAnthropicBaseUrl: string;
   zcodePlanBillingCurrentUrl: string;
@@ -257,11 +312,50 @@ export function resolveRuntimeProductEndpointConfig(
   };
 }
 
-export function buildZCodeEndpointUrls(origin: string): ZCodeEndpointUrls {
+/**
+ * relay 地址解析：env 覆盖优先；本地 endpoint 直连本地 ws，官方 endpoint 连官方 relay。
+ */
+export function resolveWebRemoteControlRelayWsUrl(options?: {
+  endpointOrigin?: string | null | undefined;
+  overrideUrl?: string | null | undefined;
+}): string {
+  const overrideUrl = options?.overrideUrl?.trim();
+  if (overrideUrl) {
+    return overrideUrl;
+  }
+
+  const endpointOrigin = options?.endpointOrigin?.trim();
+  // 本地/自部署 endpoint：relay 与页面同源，ws 路径即 /ws；默认连官方 relay。
+  if (endpointOrigin && endpointOrigin !== DEFAULT_ZCODE_ENDPOINT_ORIGIN) {
+    try {
+      const parsed = new URL(endpointOrigin);
+      const wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+      return `${wsProtocol}//${parsed.host}/ws`;
+    } catch {
+      return DEFAULT_WEB_REMOTE_CONTROL_RELAY_WS_URL;
+    }
+  }
+
+  return DEFAULT_WEB_REMOTE_CONTROL_RELAY_WS_URL;
+}
+
+export function buildZCodeEndpointUrls(
+  origin: string,
+  options?: BuildZCodeEndpointUrlsOptions,
+): ZCodeEndpointUrls {
   const normalizedOrigin = normalizeZCodeEndpointOrigin(origin);
+  const parsed = new URL(normalizedOrigin);
+  const wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+  const wsOrigin = `${wsProtocol}//${parsed.host}`;
+  // 无法解析或低于分界版本时保守使用 v3，避免开发版本和旧客户端进入未兼容的 v4 页面。
+  const remoteVersion = isWebRemoteControlV4AppVersion(options?.appVersion) ? "v4" : "v3";
+
   return {
     origin: normalizedOrigin,
     apiBaseUrl: `${normalizedOrigin}/api/v1`,
+    remoteUrl: `${normalizedOrigin}/remote/${remoteVersion}`,
+    webRemoteCallbackUrl: `${normalizedOrigin}/web-remote/callback`,
+    relayWsUrl: `${wsOrigin}/ws`,
     webShareCallbackUrl: `${normalizedOrigin}/cn/share/callback`,
     zcodePlanOpenAiBaseUrl: `${normalizedOrigin}/api/v1/zcode-plan`,
     zcodePlanAnthropicBaseUrl: `${normalizedOrigin}/api/v1/zcode-plan/anthropic`,

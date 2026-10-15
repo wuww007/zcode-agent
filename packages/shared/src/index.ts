@@ -294,6 +294,11 @@ export * from "./workspaceSessionRestore.js";
 export * from "./skill-scan-policy.js";
 export * from "./browser-use/index.js";
 
+// Web Remote Control（手机远控）relay：配对令牌、设备注册、RPC 帧编解码与心跳契约。
+export * from "./web-remote-control.js";
+export * from "./web-remote-control-heartbeat.js";
+export * from "./web-remote-control-rpc-transport.js";
+
 export * from "./coding-plan-reset.js";
 export {
   parseSubagentMarkdownSelection,

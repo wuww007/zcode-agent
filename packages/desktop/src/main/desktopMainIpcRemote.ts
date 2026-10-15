@@ -34,6 +34,10 @@ import {
   type RemoteConnectionStats,
 } from "./desktopRemoteUsageArmsTelemetry.js";
 import { openPathInDefaultApp } from "./desktopMainIpcHelpers.js";
+import {
+  registerWebRemoteControlIpcHandlers,
+  type WebRemoteControlIpcManager,
+} from "./desktopWebRemoteControlIpc.js";
 
 function isAllowedExternalOpenUrl(value: string): boolean {
   try {
@@ -165,6 +169,7 @@ export function registerRemoteIpcHandlers(options: {
   };
   /** 仅由 VITE_ZCODE_E2E_STORE_BRIDGE + test runner 双门禁打开。 */
   finalArmsCustomEventE2EEnabled?: boolean;
+  webRemoteControlManager: WebRemoteControlIpcManager;
   createRemoteWorkspaceSession: (
     win: BrowserWindow,
     target: RemoteTarget,
@@ -257,6 +262,11 @@ export function registerRemoteIpcHandlers(options: {
       },
     );
   }
+
+  registerWebRemoteControlIpcHandlers({
+    reportRemoteUsageEvent,
+    webRemoteControlManager: options.webRemoteControlManager,
+  });
 
   ipcMain.on(PlatformChannels.OAuthRegisterState, (event, payload: unknown) => {
     const registration = parseOAuthStateRegistration(payload);
