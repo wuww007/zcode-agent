@@ -170,6 +170,7 @@ import type { ConversationPromptTelemetrySeed } from "@/v4/telemetry/conversatio
 import type { ComposerSubmissionConfig } from "@/v4/composer/composerSubmissionConfig.js";
 import { buildV4ConversationPromptTelemetryExtraDetail } from "@/v4/telemetry/conversationPromptTelemetry.js";
 import { resolveAttachableShareContext } from "@/lib/conversationShareContext.js";
+import type { GenerationSpeedTracker } from "@/v4/generationSpeed.js";
 
 const MODEL_SELECTION_LOADING_STATE: ModelSelectionState = { status: "loading" };
 
@@ -355,6 +356,11 @@ function arePromptHistoryEntriesEqual(left: readonly string[], right: readonly s
 
 interface ConversationComposerProps {
   snapshot: ConversationSnapshot | null;
+  /**
+   * 生成速度指示器的流中估值入口（SessionPane 从当前 SessionLease 的 store 取）。
+   * 不传/null 时指示器只读 usage.lastRequest 精确值（分享回放等静态视图）。
+   */
+  generationSpeed?: GenerationSpeedTracker | null;
   /** 草稿 scope（sessionId；draft 态 null → "__draft__" scope）。 */
   sessionId?: string | null;
   /** Skill catalog authority；草稿预热完成后为 prewarmSessionId，不改变 task/draft 身份。 */
@@ -484,6 +490,7 @@ function formatAttachmentLineCount(attachment: ChatComposerAttachment, locale: s
 
 function ConversationComposerImpl({
   snapshot,
+  generationSpeed = null,
   sessionId = null,
   skillCatalogSessionId = sessionId,
   draftMode = false,
@@ -2052,6 +2059,7 @@ function ConversationComposerImpl({
             draftMode={draftMode}
             draftConfig={draftConfig}
             usage={composerUsage}
+            generationSpeed={generationSpeed}
             disabled={disabled}
             activeConfigPicker={activeConfigPicker}
             onConfigPickerOpenChange={handleConfigPickerOpenChange}
@@ -2104,6 +2112,7 @@ function ConversationComposerImpl({
       activeConfigPicker,
       composerPhase,
       composerUsage,
+      generationSpeed,
       disabled,
       draftConfig,
       draftMode,

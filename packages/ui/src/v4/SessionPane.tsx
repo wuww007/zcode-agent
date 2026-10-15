@@ -102,6 +102,7 @@ import {
 import { useDraftSessionPrewarm } from "@/v4/composer/useDraftSessionPrewarm.js";
 import { projectSessionConfigToTaskConfigOptions } from "@/v4/composer/sessionConfigTaskCache.js";
 import { useDraftRuntimeRebuildGate } from "@/v4/composer/useDraftRuntimeRebuildGate.js";
+import { GenerationSpeedIndicator } from "@/v4/composer/GenerationSpeedIndicator.js";
 import { useDraftModelReadinessGate } from "@/v4/composer/useDraftModelReadinessGate.js";
 import { useSettings } from "@/hooks/useSettingService.js";
 import { useZCodeStoreWithDefault } from "@/store/StoreProvider.js";
@@ -4381,6 +4382,20 @@ export function SessionPane({
       });
   }, [dispatchCommand, handleDraftSessionCreated, recoverableCommand, workspaceKey]);
 
+  // 只读 pane（子代理会话）没有 composer：生成速度指示器落在头部 chrome 槽位，
+  // 复用本 pane 租用的 child session store 的 tracker 与子会话运行态。
+  const headerGenerationSpeed = useMemo(
+    () =>
+      readOnly ? (
+        <GenerationSpeedIndicator
+          variant="header"
+          tracker={lease?.store.generationSpeed ?? null}
+          phase={snapshot?.control.phase ?? null}
+        />
+      ) : undefined,
+    [readOnly, lease, snapshot?.control.phase],
+  );
+
   // subagent 右侧 child tab 是观察视图；复用普通 SessionPane 时
   // 若仍创建 composer，会让用户误以为可以直接向 child session 继续输入。
   const composerNode = readOnly ? null : (
@@ -4388,6 +4403,8 @@ export function SessionPane({
       key="conversation-composer"
       // Snapshot 仍服务用量、路由与运行态；工具栏的 mode/model 只读下方 Composer Draft。
       snapshot={snapshot}
+      // 生成速度指示器的流中估值：必须取本 pane rent 的 store，切任务/切 pane 不串台。
+      generationSpeed={lease?.store.generationSpeed ?? null}
       sessionId={sessionId}
       // 草稿 taskId 仍为 null，但 prewarm 已经拥有独立 AgentRuntime。
       // 只给 Skill catalog 下发 effective id，避免 UI 扫到 prewarm runtime 尚未加载的新 Skill。
@@ -4637,6 +4654,7 @@ export function SessionPane({
         onSplitDown={onSplitDown}
         onClosePane={onClosePane}
         workspaceBadge={workspaceBadge}
+        trailing={headerGenerationSpeed}
       />
 
       <div

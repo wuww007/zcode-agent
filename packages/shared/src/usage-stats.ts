@@ -8,6 +8,26 @@ import type { ZCodeAccountAccess, ZCodeProviderAccountAccess } from "./zcode-pro
 
 export const ESTIMATED_TOKEN_CHAR_DIVISOR = 3;
 
+/**
+ * 估算文本的 token 量：中文按两个字符权重计入，其余字符一个。
+ * 这是全仓唯一的字符→token 估算口径（CLI 上下文计量与 UI 生成速度共用），
+ * 新增消费方不要另写除数或中文权重。
+ */
+export function countEstimatedTokenChars(text: string): { cjkChars: number; otherChars: number } {
+  const cjkChars = (text.match(/[一-鿿]/g) || []).length;
+  return { cjkChars, otherChars: text.length - cjkChars };
+}
+
+/** 窗口聚合用：字符计数已在调用方累加，这里只做一次换算，避免逐片段 ceil 的累积偏差。 */
+export function estimateTokensFromCharCounts(cjkChars: number, otherChars: number): number {
+  return Math.ceil((cjkChars * 2 + otherChars) / ESTIMATED_TOKEN_CHAR_DIVISOR);
+}
+
+export function estimateTokensFromText(text: string): number {
+  const { cjkChars, otherChars } = countEstimatedTokenChars(text);
+  return estimateTokensFromCharCounts(cjkChars, otherChars);
+}
+
 export type UsageStatsRange = "all" | "7d" | "30d";
 export type CodingPlanUsageRange = "today" | "7d" | "30d" | "custom";
 export type CodingPlanUsageGranularity = "hour" | "day";

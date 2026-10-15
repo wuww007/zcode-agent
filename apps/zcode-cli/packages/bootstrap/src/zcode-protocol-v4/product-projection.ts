@@ -63,6 +63,7 @@ import {
 // 会在 packages/ui 的 Desktop 构建链解析失败，App 重启后打不开。）
 import { verdictWorkspaceHookReviewRequest } from "@zcode/shared/workspace-hook-review-monotonicity";
 import {
+  calculateOutputTps,
   extractPlanStepsFromToolInput,
   extractPlanStepsFromToolOutput,
   isZCodeModelRetryRecoveryProgressPayload,
@@ -667,6 +668,7 @@ export class ProductProjection {
       this.snapshot = {
         ...this.snapshot,
         usage: {
+          ...(current.lastRequest ? { lastRequest: current.lastRequest } : {}),
           contextWindow: currentContextWindow
             ? {
                 ...currentContextWindow,
@@ -691,6 +693,7 @@ export class ProductProjection {
     this.snapshot = {
       ...this.snapshot,
       usage: {
+        ...(current.lastRequest ? { lastRequest: current.lastRequest } : {}),
         contextWindow:
           seededContextWindow.maxTokens === null
             ? null
@@ -2365,8 +2368,11 @@ export class ProductProjection {
         // adapter attempt=2+ 只说明重试请求已发出，不代表连接恢复；
         // 保持当前状态，等首个有效 text/reasoning/tool 进展再清理，避免标签闪退。
         return positiveInteger(payload.attempt, 1) <= 1 ? this.setApiRetry(null) : [];
-      case "model_request_completed":
-        return this.setApiRetry(null);
+      case "model_request_completed": {
+        const retryClearDeltas = this.setApiRetry(null);
+        const usageDelta = this.lastRequestUsageDelta(event, payload);
+        return usageDelta ? [...retryClearDeltas, usageDelta] : retryClearDeltas;
+      }
       case "model_request_failed":
         return payload.retryable ? [] : this.setApiRetry(null);
       case "model_stream_stalled":
@@ -2379,6 +2385,47 @@ export class ProductProjection {
       case "model_request_admitted":
         return [];
     }
+  }
+
+  /**
+   * 主请求完成时写入精确输出速度（usage.lastRequest），与开发者工具 round 的 TPS
+   * 同源（共享 calculateOutputTps）。只有 main_turn 且时间/用量完整时下发；
+   * 展示口径：outputTokens ÷（durationMs − timeToFirstContentMs）。
+   */
+  private lastRequestUsageDelta(
+    event: SessionEvent,
+    payload: Extract<ModelNetworkStatusPayload, { type: "model_request_completed" }>,
+  ): ConversationDelta | null {
+    if (payload.querySource !== "main_turn") return null;
+    const durationMs = payload.durationMs;
+    const timeToFirstContentMs = payload.timeToFirstContentMs;
+    const generationDurationMs =
+      durationMs !== undefined &&
+      timeToFirstContentMs !== undefined &&
+      durationMs > timeToFirstContentMs
+        ? durationMs - timeToFirstContentMs
+        : null;
+    const outputTokens = payload.usage?.outputTokens;
+    const tokensPerSecond = calculateOutputTps(outputTokens, generationDurationMs);
+    if (outputTokens === undefined || generationDurationMs === null || tokensPerSecond === null) {
+      return null;
+    }
+    const current = this.snapshot.usage;
+    return {
+      op: "state.updated",
+      patch: {
+        usage: {
+          contextWindow: current.contextWindow,
+          cumulative: current.cumulative,
+          lastRequest: {
+            outputTokens,
+            generationDurationMs,
+            tokensPerSecond,
+            completedAt: this.ms(event),
+          },
+        },
+      },
+    };
   }
 
   private onStreamRecoveryStarted(event: SessionEvent): ConversationDelta[] {
@@ -3149,7 +3196,10 @@ export class ProductProjection {
         summary: payload.reason,
         detail: payload.input,
         freeText: true,
-        ...(payload.fullAccessSupported === true && !payload.origin && !payload.optionsPolicy
+        ...(payload.approvalMode !== "user-once" &&
+        payload.fullAccessSupported === true &&
+        !payload.origin &&
+        !payload.optionsPolicy
           ? {
               fullAccessOption: {
                 optionId: PERMISSION_FULL_ACCESS_OPTION_ID,
@@ -3163,6 +3213,7 @@ export class ProductProjection {
         ...(askDisplay ? { display: askDisplay } : {}),
         options: [
           ...buildProtocolPermissionOptions({
+            approvalMode: payload.approvalMode,
             input: payload.input,
             suggestedPermissionUpdates: payload.suggestedPermissionUpdates,
             ...(payload.optionsPolicy ? { optionsPolicy: payload.optionsPolicy } : {}),
@@ -4525,10 +4576,14 @@ export class ProductProjection {
     this.contextWindowState.usedTokens = usedTokens;
     const maxTokens = payload.contextWindow ?? this.contextWindowState.maxTokens;
     const cumulative = this.snapshot.usage.cumulative;
+    // usage 是键级整体替换：本补丁必须显式保留 lastRequest，否则会抹掉刚刚由
+    // model_request_completed 写入的本轮精确速度。
+    const lastRequest = this.snapshot.usage.lastRequest;
     deltas.push({
       op: "state.updated",
       patch: {
         usage: {
+          ...(lastRequest ? { lastRequest } : {}),
           // Bug 原因：registry 已显式清除窗口时，缺少 contextWindow 的 ModelComplete
           // 过去会用 0 重建对象，破坏未知容量语义。token 继续在侧状态和累计值中更新。
           contextWindow:

@@ -4700,6 +4700,9 @@ const enUS: Record<string, string> = {
   "chat.reasoning.thought": "Thought",
   "chat.reasoning.durationFewSeconds": "a few seconds",
   "chat.reasoning.durationSeconds": "{seconds} seconds",
+  "chat.generationSpeed.estimateValue": "≈{tps} tok/s",
+  "chat.generationSpeed.estimateTooltip":
+    "Estimated output speed while generating (includes thinking and tool arguments)",
   "chat.contextUsage": "Context usage {used} of {total}",
   "chat.contextUsage.title": "Context windows",
   "chat.contextUsageDescription":
@@ -5923,6 +5926,8 @@ const enUS: Record<string, string> = {
   "mode.label.glm.build": "Ask before changes",
   "mode.label.glm.edit": "Edit automatically",
   "mode.label.glm.plan": "Plan mode",
+  "mode.label.glm.guarded": "Autonomous mode",
+  "mode.description.glm.guarded": "Ask when there’s risk",
   "mode.label.glm.yolo": "Full access",
   "mode.description.glm.build": "Ask before file changes.",
   "mode.description.glm.edit": "Edit files automatically.",

@@ -20,6 +20,7 @@ import {
   type TopicFrameDeliveryKind,
 } from "@zcode/shared/zcode-protocol-v4";
 import { logger } from "@/logger.js";
+import { GenerationSpeedTracker, generationSpeedNow } from "@/v4/generationSpeed.js";
 import type { ConversationTurnNavigatorHydrationResult } from "@/v4/conversationTurnNavigatorHelpers.js";
 import type { ConversationTransport } from "@/v4/transport.js";
 import { uiMemoryDiagnosticsRegistry } from "@/lib/memoryDiagnostics.js";
@@ -382,6 +383,13 @@ export class ConversationProjectionStore {
       > & { directoryRevision: number })
     | null = null;
   private closed = false;
+
+  /**
+   * 生成速度指示器的流中估值。纯派生视图值：只从本 store 已 apply 的帧流推导，
+   * 不参与投影状态、不持久化、不进协议（精确值走 usage.lastRequest）。
+   * 见 specs/task-page-token-speed.md。
+   */
+  readonly generationSpeed = new GenerationSpeedTracker();
 
   constructor(
     readonly topic: string,
@@ -747,6 +755,8 @@ export class ConversationProjectionStore {
       this.subscriptionHasAppliedBase = true;
       this.reconcileOptimistic(frame.payload.snapshot);
       this.reconcileAcceptedInputProjection(frame.payload.snapshot);
+      // 快照整体替换：行内账本播种为快照文本长度（已有正文不算作本次生成）。
+      this.generationSpeed.seedRows(frame.payload.snapshot.rows.window);
       // initial 丢失时，publisher 允许完整 online snapshot 建立首个
       // applied base；其中的持久 transition 可能早于本次订阅，不能冒充实时新事件。
       // 首帧只播种观察基线，后续 online 跃迁才通知 pane。
@@ -795,6 +805,10 @@ export class ConversationProjectionStore {
       return;
     }
     const applied = applyConversationDeltas(current, frame.payload.deltas);
+    // 生成速度观测必须用「本帧实际到达的 delta」：合并器已把被 row.upserted 吞掉的
+    // row.delta 移除，tracker 靠行内账本差分补齐，不能改用 applied 后的投影状态。
+    // 时钟固定用 generationSpeedNow，必须与渲染侧 sample(now) 是同一个。
+    this.generationSpeed.observeDeltas(frame.payload.deltas, generationSpeedNow());
     // seq 是快照对齐水位，delta 帧应用完推进到帧右端点。
     const next = { ...applied, seq: frame.toSeq };
     logSubagentProjectionTransition(this.topic, current, next, "deltas");

@@ -202,6 +202,20 @@ export const sessionUsageStateSchema = z.object({
     cacheReadTokens: z.number(),
     cacheWriteTokens: z.number(),
   }),
+  /**
+   * 最近一次主请求（querySource=main_turn）完成后的输出速度。
+   * additive：旧客户端按 strip 语义丢弃；不种子化（打开历史任务不显示速度，
+   * 直到本进程内产生新一轮生成）。计算与开发者工具同源：calculateOutputTps。
+   */
+  lastRequest: z
+    .object({
+      outputTokens: z.number(),
+      generationDurationMs: z.number(),
+      tokensPerSecond: z.number(),
+      /** 事件时间（epoch ms），用于展示侧判断新鲜度。 */
+      completedAt: z.number(),
+    })
+    .optional(),
 });
 export type SessionUsageState = z.infer<typeof sessionUsageStateSchema>;
 

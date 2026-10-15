@@ -51,6 +51,8 @@ import {
 import { ThoughtLevelCycleControl } from "@/chat-input-toolbar/ThoughtLevelCycleControl.js";
 import { getNextThoughtLevelValue } from "@/chat-input-toolbar/thoughtLevelOptions.js";
 import type { V4ComposerConfigPicker } from "@/v4/composer/configPickerState.js";
+import { GenerationSpeedIndicator } from "@/v4/composer/GenerationSpeedIndicator.js";
+import type { GenerationSpeedTracker } from "@/v4/generationSpeed.js";
 import { useToolbarShortcutBindings } from "@/v4/composer/toolbarShortcuts.js";
 import {
   resolveModelSelectTriggerDisplay,
@@ -337,6 +339,8 @@ export interface V4ComposerToolbarProps {
   /** 当前 scope 的 Composer 选择；新任务与已有会话都只显示这份状态。 */
   draftConfig?: Partial<SessionConfigState>;
   usage: SessionUsageState | null;
+  /** 生成速度指示器的流中估值（SessionLease store 字段）；null 时只读 usage.lastRequest。 */
+  generationSpeed?: GenerationSpeedTracker | null;
   disabled: boolean;
   /** 单个 composer 内的配置 picker 排他 owner；只属于 renderer-local presentation。 */
   activeConfigPicker: V4ComposerConfigPicker | null;
@@ -372,7 +376,9 @@ function V4ComposerModelControlsImpl({
   isMobileViewport = false,
   draftMode = false,
   draftConfig,
+  phase,
   usage,
+  generationSpeed = null,
   disabled,
   activeConfigPicker,
   onConfigPickerOpenChange,
@@ -1010,6 +1016,7 @@ function V4ComposerModelControlsImpl({
         data-usage-max={usage?.contextWindow?.maxTokens ?? ""}
         className="hidden"
       />
+      <GenerationSpeedIndicator tracker={generationSpeed} phase={phase} />
       <ChatContextUsage
         codingPlanUsageRemaining={codingPlanUsageRemaining}
         taskUsage={taskUsage}

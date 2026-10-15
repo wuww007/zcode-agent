@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import {
   TID_V4_PANE_WORKSPACE_BADGE,
   TID_V4_SESSION_TITLE,
@@ -30,15 +30,26 @@ interface ConversationHeaderProps {
   onClosePane?: () => void;
   /** 跨 workspace pane 的归属徽标（pane workspace ≠ shell 当前 workspace 时下发）。 */
   workspaceBadge?: PaneWorkspaceBadge;
+  /**
+   * 悬浮 chrome 槽位（如只读 pane 的生成速度指示器）。与徽标/关闭按钮同一行，
+   * 由宿主决定是否摆放；内容自身隐藏时槽位不可见，不影响布局。
+   */
+  trailing?: ReactNode;
 }
 
 /**
  * pane chrome：不占布局高度，只在右上角悬浮拆分/关闭入口。
  * 保留 title data 节点，供 E2E 读取投影但不恢复旧横条。
  */
-function ConversationHeaderImpl({ title, onClosePane, workspaceBadge }: ConversationHeaderProps) {
+function ConversationHeaderImpl({
+  title,
+  onClosePane,
+  workspaceBadge,
+  trailing,
+}: ConversationHeaderProps) {
   const { intl } = useZCodeIntl();
-  const hasFloatingActions = Boolean(workspaceBadge) || Boolean(onClosePane);
+  const hasFloatingActions =
+    Boolean(workspaceBadge) || Boolean(onClosePane) || trailing !== undefined;
 
   return (
     <>
@@ -61,6 +72,7 @@ function ConversationHeaderImpl({ title, onClosePane, workspaceBadge }: Conversa
               ) : null}
             </span>
           ) : null}
+          {trailing}
           {/* 产品侧暂时下线 pane chrome 拆分入口；保留回调接口与底层能力，便于后续恢复。*/}
           {/* {onSplitRight ? (
             <Button
