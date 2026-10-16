@@ -5,6 +5,7 @@
     "rootDir": "src",
     "lib": ["es2025", "dom"]
   },
-  "include": ["src/preload", "src/shared/armsRumBridgeForward.ts"],
+  "exclude": ["node_modules", "dist", "out", "**/*.test.ts"],
+  "include": ["../client/src/globals.d.ts", "src/preload", "src/shared/armsRumBridgeForward.ts"],
   "references": [{ "path": "../shared" }]
 }

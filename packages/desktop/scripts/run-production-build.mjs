@@ -17,6 +17,8 @@ export function resolveDesktopProductionCleanPaths(cwd) {
     resolve(cwd, "out/host"),
     resolve(cwd, "out/preload"),
     resolve(cwd, "out/renderer"),
+    // 插件 UI 沙箱的 IIFE 别名脚本（plugin-sandbox-alias / gen-ui）；旧产物同样不得进 asar。
+    resolve(cwd, "out/plugin-sandbox"),
     resolve(cwd, "out/.main-build-ready"),
     resolve(cwd, "out/.host-build-ready"),
     resolve(cwd, "out/.preload-build-ready"),

@@ -812,7 +812,7 @@ export function createWebRemoteControlManager(dependencies: WebRemoteControlMana
         ]);
       })
       .sort();
-    const taskSignatureEntries = result.tasks
+    const taskSignatureEntries = (result.tasks ?? [])
       .map((task) => {
         const workspaceKey = resolveWebRemoteControlWorkspaceKey(task);
         return JSON.stringify([

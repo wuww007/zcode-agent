@@ -25,6 +25,11 @@ import {
   installLocalMediaPreviewProtocol,
   registerLocalMediaPreviewScheme,
 } from "./localMediaPreviewProtocol.js";
+import {
+  PLUGIN_SANDBOX_PRIVILEGED_SCHEME,
+  getPluginSandboxHost,
+  installPluginSandboxHost,
+} from "./pluginSandbox/index.js";
 import { createDesktopBrowserScreenshotSurfaceCoordinator } from "./browserView/browserScreenshotSurfaceCoordinatorWiring.js";
 import { EMBEDDED_BROWSER_PARTITION } from "./browserDataManager.js";
 import { EmbeddedBrowserJavaScriptDialogController } from "./embeddedBrowserJavaScriptDialog.js";
@@ -1851,7 +1856,7 @@ function createWindowInstance(startupBootstrap: StartupWindowBootstrap = {}) {
           onOffPeakRunResult: forwardOffPeakRunResult,
           onCronSchedulerWakeRequested: wakeCronScheduler,
           onOffPeakSchedulerWakeRequested: wakeOffPeakScheduler,
-          registerPluginSandbox: (input) => {
+          registerPluginSandbox: async (input) => {
             const host = getPluginSandboxHost();
             if (!host) throw new Error("Plugin UI sandbox host is not installed.");
             const { requestId: _requestId, ...registerInput } = input;

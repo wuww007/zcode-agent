@@ -173,6 +173,13 @@ export type ServiceChannelName = (typeof ServiceChannels)[keyof typeof ServiceCh
 
 /** Electron IPC 频道名。仅在 preload ↔ main 之间使用。 */
 export const PlatformChannels = {
+  /** renderer → main：释放插件 UI 沙箱（关闭 ports、撤 protocol handler、清 partition） */
+  PluginSandboxDispose: "zcode:plugin-sandbox-dispose",
+  PluginSandboxCopyImage: "zcode:plugin-sandbox-copy-image",
+  /** renderer → main：一次性消费插件 UI 沙箱 guest 的用户手势 token */
+  PluginSandboxConsumeUserGesture: "zcode:plugin-sandbox-consume-user-gesture",
+  /** renderer → main：查询自身 webContents id，作为沙箱登记的 owner */
+  PluginSandboxOwnerWebContentsId: "zcode:plugin-sandbox-owner-web-contents-id",
   /** 打开系统目录选择框 */
   SelectDirectory: "zcode:select-directory",
   /** 打开系统文件选择框 */

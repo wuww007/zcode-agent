@@ -415,6 +415,8 @@ import {
 } from "./plugin-ui-bridge/index.js";
 import type { PluginSandboxHandle, PluginSandboxRegisterInput } from "@zcode/shared/mcp-apps";
 import { createPluginUiAccountBindings } from "./plugin-ui-bridge/instanceAccounts.js";
+import { IGenUiService } from "./gen-ui/contract.js";
+import { createGenUiService } from "./gen-ui/node.js";
 import { createPluginSyncService } from "./plugin-sync/pluginSyncService.js";
 import { createPluginsService } from "./plugins/pluginsService.js";
 import { createPluginManagementService } from "./plugins/pluginManagementService.js";
@@ -1414,8 +1416,12 @@ export function createLocalServices(options: {
       overrideOrigin: (await settingService.get()).zcodeEndpointOrigin,
     });
   const provisioningOAuthKeys = new Set<string>(PROVIDER_PROVISIONING_OAUTH_CREDENTIAL_KEYS);
+  // 插件 UI 的账号上下文绑定：切账号 / 用户档案变化时注销旧凭据，旧 App 实例不再可用。
+  let invalidatePluginUiAccounts: (() => void) | undefined;
   const credentialService = createCredentialService({
     onDidMutate: ({ key }) => {
+      if (key === "oauth:active_provider" || /^oauth:[^:]+:user_info$/.test(key))
+        invalidatePluginUiAccounts?.();
       if (provisioningOAuthKeys.has(key) || isProviderProvisioningAccountCredentialKey(key)) {
         options.onProviderProvisioningSourceChanged?.("credential");
       }
@@ -1690,6 +1696,7 @@ export function createLocalServices(options: {
     open: (params) => zcodeAgentService.openMcpUiInstance(params),
     close: (params) => zcodeAgentService.closeMcpUiInstance(params),
   });
+  invalidatePluginUiAccounts = () => pluginUiAccounts.invalidate();
   const pluginUiBridgeService = createPluginUiBridgeService({
     openInstance: (params) => pluginUiAccounts.open(params),
     closeInstance: (params) => pluginUiAccounts.close(params),
@@ -1718,6 +1725,10 @@ export function createLocalServices(options: {
     unregisterAppToolsForUi: (params) => zcodeAgentService.unregisterAppToolsForUi(params),
     claimAppToolCallForUi: (params) => zcodeAgentService.claimAppToolCallForUi(params),
     resolveAppToolCallForUi: (params) => zcodeAgentService.resolveAppToolCallForUi(params),
+  });
+  // Gen UI：宿主注入的沙箱登记入口；缺省（web / 手机远控）时 createGenUiService 内部 fail closed。
+  const genUiService = createGenUiService({
+    registerSandbox: options.registerPluginSandbox,
   });
   const subagentsService = createSubagentsService({
     isDesktopRuntime: true,
@@ -2636,6 +2647,10 @@ export function createLocalServices(options: {
     .register(ISkillsService, skillsService)
     .register(ISkillSyncService, createSkillSyncService())
     .register(IMcpSyncService, mcpSyncService)
+    .register(IGenUiService, genUiService)
+    .register(IPluginUiBridgeService, pluginUiBridgeService)
+    .register(IPluginUiSamplingService, pluginUiSamplingService)
+    .register(IPluginUiAppToolsService, pluginUiAppToolsService)
     // 合并 MCP/Plugin Management 服务装配时误删了 plugin-sync 注册，
     // RemoteServiceAccess 仍会请求该频道，导致本地候选枚举超时、远端同步无法开始。
     .register(IPluginSyncService, pluginSyncService)
