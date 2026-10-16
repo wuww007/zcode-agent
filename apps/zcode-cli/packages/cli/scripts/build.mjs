@@ -140,6 +140,10 @@ export const resolveBuildAliases = ({
   // plugin-host 启动只需这些独立入口，不能经通用 alias 重新求值 shared 总入口。
   "@zcode/shared/runtime-env": resolve(rootDirectory, "../../packages/shared/src/runtimeEnv.ts"),
   "@zcode/shared/mcp": resolve(rootDirectory, "../../packages/shared/src/mcp.ts"),
+  // 插件 UI（MCP Apps）契约与 Gen UI 契约是新增子路径；不精确声明会被拼到
+  // `src/index.ts/mcp-apps` 上，Desktop agent / SEA 打包直接失败。
+  "@zcode/shared/mcp-apps": resolve(rootDirectory, "../../packages/shared/src/mcp-apps/index.ts"),
+  "@zcode/shared/gen-ui": resolve(rootDirectory, "../../packages/shared/src/gen-ui/index.ts"),
   "@zcode/shared/runtime-tool-runtime": resolve(
     rootDirectory,
     "../../packages/shared/src/runtime-tool-runtime.ts",
